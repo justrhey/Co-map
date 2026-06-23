@@ -1,0 +1,114 @@
+.icon-btns {
+  display: grid;
+  grid-gap: 1.2em 0.8em;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 0;
+  padding: 0.5em 0 1.5em;
+  overflow: visible;
+}
+
+.icon-btn {
+  background-color: transparent;
+  outline: none;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  max-width: 4.2em;
+  justify-self: center;
+  perspective: 24em;
+  transform-style: preserve-3d;
+  -webkit-tap-highlight-color: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.icon-btn__back,
+.icon-btn__front,
+.icon-btn__label {
+  transition:
+    opacity 0.3s cubic-bezier(0.83, 0, 0.17, 1),
+    transform 0.3s cubic-bezier(0.83, 0, 0.17, 1);
+}
+
+.icon-btn__back,
+.icon-btn__front {
+  border-radius: 1.25em;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.icon-btn__back {
+  box-shadow: 0.5em -0.5em 0.75em hsla(223, 10%, 10%, 0.15);
+  display: block;
+  transform: rotate(15deg);
+  transform-origin: 100% 100%;
+  will-change: transform;
+}
+
+.icon-btn__front {
+  background-color: hsla(0, 0%, 100%, 0.12);
+  box-shadow: 0 0 0 0.1em hsla(0, 0%, 100%, 0.25) inset;
+  backdrop-filter: blur(0.75em);
+  -webkit-backdrop-filter: blur(0.75em);
+  display: flex;
+  transform-origin: 80% 50%;
+  will-change: transform;
+}
+
+.icon-btn.active .icon-btn__front {
+  background-color: hsla(0, 0%, 100%, 0.25);
+  box-shadow:
+    0 0 0 0.12em hsla(0, 0%, 100%, 0.5) inset,
+    0 0 1.5em hsla(0, 0%, 100%, 0.08);
+}
+
+.icon-btn__icon {
+  margin: auto;
+  width: 1.3em;
+  height: 1.3em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+.icon-btn__label {
+  font-size: 0.65em;
+  white-space: nowrap;
+  text-align: center;
+  line-height: 1.3;
+  position: absolute;
+  top: 105%;
+  right: 0;
+  left: 0;
+  color: var(--text-2, #94a3b8);
+  font-weight: 500;
+  font-family: 'Inter', sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.icon-btn.active .icon-btn__label {
+  color: #fff;
+}
+
+.icon-btn:focus-visible .icon-btn__back,
+.icon-btn:hover .icon-btn__back {
+  transform: rotate(25deg) translate3d(-0.3em, -0.3em, 0.5em);
+}
+
+.icon-btn:focus-visible .icon-btn__front,
+.icon-btn:hover .icon-btn__front {
+  transform: translate3d(0, 0, 2em);
+}
+
+
+@media (min-width: 500px) {
+  .icon-btns {
+    grid-template-columns: repeat(5, 1fr);
+    grid-gap: 1.5em;
+  }
+}
