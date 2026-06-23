@@ -57,7 +57,7 @@ export default function HomePage({ onNavigate }) {
               <path d="M14 39C14 39 2 26 2 14 2 7.5 7.5 2 14 2s12 5.5 12 12c0 12-12 25-12 25z" fill="var(--accent)" opacity="0.9"/>
               <circle cx="14" cy="14" r="5" fill="#0d1117"/>
             </svg>
-            <h1 className="home-title">Community Watch</h1>
+            <h1 className="home-title">Co-Map</h1>
           </div>
           <p className="home-subtitle">
             Report issues in your neighborhood, track progress from city officials,
@@ -237,7 +237,7 @@ export default function HomePage({ onNavigate }) {
 
       {/* ── Footer ── */}
       <footer className="home-footer">
-        <p>Community Watch — built for better neighborhoods</p>
+        <p>Co-Map — built for better neighborhoods</p>
       </footer>
     </div>
   );

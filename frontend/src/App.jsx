@@ -1420,7 +1420,7 @@ function findBarangay(lat, lng, geojson) {
       <header className="top-bar">
         <div className="top-bar-inner">
           <h1 className="app-title" onClick={() => setPage('home')} style={{ cursor: 'pointer' }}>
-            <IconMapPin width={20} height={20} /> Community Watch
+            <IconMapPin width={20} height={20} /> Co-Map
           </h1>
           {mapInstance && <SearchBar map={mapInstance} />}
           {user ? (

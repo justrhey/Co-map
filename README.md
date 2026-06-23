@@ -1,4 +1,4 @@
-# Community Complaint Map
+# Co-Map
 
 A community-powered platform where residents can **pin complaints on a map** — report potholes, broken streetlights, graffiti, and more. Built for scale from day one.
 

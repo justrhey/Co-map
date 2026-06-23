@@ -53,7 +53,7 @@ export default function LoginPage({ onLogin, onBack }) {
             <path d="M14 39C14 39 2 26 2 14 2 7.5 7.5 2 14 2s12 5.5 12 12c0 12-12 25-12 25z" fill="var(--accent)" opacity="0.9"/>
             <circle cx="14" cy="14" r="5" fill="#0d1117"/>
           </svg>
-          <span>Community Watch</span>
+          <span>Co-Map</span>
         </div>
 
         <h2 className="login-page-title">
