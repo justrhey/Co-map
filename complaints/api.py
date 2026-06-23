@@ -168,6 +168,21 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
             validate_media_file(f)
         return files
 
+    def validate(self, data):
+        """Validate complaint category against location terrain."""
+        from .terrain import validate_complaint_terrain
+
+        category = data.get('category')
+        lat = data.get('latitude')
+        lng = data.get('longitude')
+
+        if category and lat is not None and lng is not None:
+            is_valid, message = validate_complaint_terrain(category, lat, lng)
+            if not is_valid:
+                raise serializers.ValidationError({'location': message})
+
+        return data
+
     def create(self, validated_data):
         additional_files = validated_data.pop('additional_media', [])
         complaint = Complaint.objects.create(**validated_data)
