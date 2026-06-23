@@ -1,18 +1,18 @@
-# 🗺️ Community Complaint Map
+# Community Complaint Map
 
 A community-powered platform where residents can **pin complaints on a map** — report potholes, broken streetlights, graffiti, and more. Built for scale from day one.
 
 ## Features
 
-- 📍 **Pin-drop reporting** — tap the map, describe the issue, submit
-- 🗺️ **Interactive map** — Leaflet.js with OpenStreetMap tiles + marker clustering
-- 🏷️ **Category system** — 10 complaint categories with emoji indicators
-- 🔍 **Filter pills** — filter complaints by category on the map
-- 👁️ **Detail popups** — click a pin to see full description and details
-- 🔒 **Rate limiting** — 10 submissions per hour per IP
-- 🛡️ **Moderation panel** — Django admin for approve/hide/resolve workflows
-- 📱 **Mobile-first** — responsive design with bottom sheet UI
-- 🚀 **Built for scale** — paginated API, database indexes, Docker ready
+- **Pin-drop reporting** — tap the map, describe the issue, submit
+- **Interactive map** — Leaflet.js with OpenStreetMap tiles + marker clustering
+- **Category system** — 10 complaint categories to classify issues
+- **Filter pills** — filter complaints by category on the map
+- **Detail popups** — click a pin to see full description and details
+- **Rate limiting** — 10 submissions per hour per IP
+- **Moderation panel** — Django admin for approve/hide/resolve workflows
+- **Mobile-first** — responsive design with bottom sheet UI
+- **Built for scale** — paginated API, database indexes, Docker ready
 
 ## Quick Start
 
@@ -90,7 +90,7 @@ docker compose up -d
 | Layer | Technology |
 |-------|-----------|
 | **Backend** | Django 6.0 + Django REST Framework |
-| **Frontend** | Leaflet.js + MarkerCluster + vanilla JS |
+| **Frontend** | React 19 + Leaflet.js + MarkerCluster |
 | **Map Tiles** | OpenStreetMap (free, no API key) |
 | **Database** | PostgreSQL (PostGIS-ready for spatial queries) |
 | **Rate Limiting** | DRF throttle classes (Redis-ready) |
@@ -100,31 +100,34 @@ docker compose up -d
 
 ```
 complaint-map/
-├── config/              # Django project settings
-│   ├── settings.py      # DRF, CORS, throttling, database
-│   └── urls.py          # API routes + frontend SPA
-├── complaints/          # Core app
-│   ├── models.py        # Complaint model (lat/lng, category, status)
-│   ├── api.py           # Serializers (list, detail, create)
-│   ├── views.py         # ViewSet + rate limiting
-│   └── admin.py         # Moderation panel
-├── frontend/            # SPA frontend
-│   ├── index.html       # Map viewport + bottom sheet
-│   ├── app.js           # Leaflet map, pin drop, API calls
-│   └── style.css        # Dark theme, responsive, animations
-├── docker-compose.yml   # PostGIS + Redis + Django
-├── Dockerfile           # Production container
-└── README.md            # This file
+  config/              # Django project settings
+    settings.py        # DRF, CORS, throttling, database
+    urls.py            # API routes + frontend SPA
+  complaints/          # Core app
+    models.py          # Complaint, Vote, ReportScore, ReportMedia models
+    api.py             # Serializers (list, detail, create)
+    views.py           # ViewSet + rate limiting + vote action
+    admin.py           # Moderation panel
+  frontend/            # React 19 + Vite SPA
+    src/
+      App.jsx          # Main app with page routing
+      App.css          # Dark theme + black & white design
+      api.js           # API client + auth
+      components/
+        HomePage.jsx   # Landing page with stats & features
+        LoginPage.jsx  # Full-page login/signup
+        GlassIcons.jsx # Category icons with glass effect
+  docker-compose.yml   # PostGIS + Redis + Django
+  Dockerfile           # Production container
 ```
 
-## Next Up (v2)
+## Recent Additions
 
-- [ ] User authentication (community accounts)
-- [ ] Photo uploads (stored on S3/CDN)
-- [ ] Upvoting / commenting on complaints
-- [ ] Real-time notifications (WebSocket)
-- [ ] Offline support (PWA service worker)
-- [ ] Custom vector tiles (Protomaps for 1M+ complaint scale)
+- **Home page** — hero stats, how it works steps, features grid, category chips
+- **Full-page authentication** — login/register with Google and GitHub SSO
+- **Upvoting system** — authenticated users can toggle upvotes, vote counts on complaints
+- **Scoring & gamification** — auto-scored reports with grade letters, XP, and level progression
+- **Black & white theme** — monochrome UI chrome with preserved colorful category icons
 
 ## License
 
