@@ -1,8 +1,8 @@
 """
 URL configuration for the Community Complaint Map API.
 """
-from django.contrib import admin
 from django.urls import path, include
+from complaints.admin_site import admin_site
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
@@ -13,7 +13,7 @@ router = DefaultRouter()
 router.register(r'complaints', ComplaintViewSet, basename='complaint')
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path('admin/', admin_site.urls),
 
     # API
     path('api/', include(router.urls)),

@@ -20,7 +20,6 @@ class ReportScoreInline(admin.StackedInline):
     can_delete = False
 
 
-@admin.register(Complaint)
 class ComplaintAdmin(admin.ModelAdmin):
     """Admin interface for moderating community complaints."""
     list_display = ['id', 'category_display', 'status_colored', 'user_email', 'photo_thumb', 'score_display', 'created_at']
@@ -47,9 +46,15 @@ class ComplaintAdmin(admin.ModelAdmin):
     category_display.admin_order_field = 'category'
 
     def status_colored(self, obj):
-        colors = {'pending': '#eab308', 'approved': '#22c55e', 'resolved': '#3b82f6'}
+        colors = {'pending': '#eab308', 'approved': '#22c55e', 'resolved': '#3b82f6', 'rejected': '#f85149'}
         color = colors.get(obj.status, '#666')
-        return format_html('<span style="color:{};font-weight:700">⬤ {}</span>', color, obj.get_status_display())
+        badge = format_html(
+            '<span style="display:inline-flex;align-items:center;gap:5px;font-weight:600">'
+            '<svg width="8" height="8" viewBox="0 0 8 8" style="flex-shrink:0"><circle cx="4" cy="4" r="4" fill="{}"/></svg>'
+            '{}</span>',
+            color, obj.get_status_display()
+        )
+        return badge
     status_colored.short_description = 'Status'
     status_colored.admin_order_field = 'status'
 
@@ -94,14 +99,12 @@ class ComplaintAdmin(admin.ModelAdmin):
         self.message_user(request, f"{updated} complaint(s) set back to pending.")
 
 
-@admin.register(ReportMedia)
 class ReportMediaAdmin(admin.ModelAdmin):
     list_display = ['id', 'complaint_id', 'media_type', 'uploaded_at']
     list_filter = ['media_type', 'uploaded_at']
     search_fields = ['complaint_id']
 
 
-@admin.register(ReportScore)
 class ReportScoreAdmin(admin.ModelAdmin):
     list_display = ['complaint_id', 'total', 'letter_grade', 'specificity', 'context', 'clarity', 'completeness', 'actionability']
     list_filter = ['letter_grade']

@@ -1,0 +1,856 @@
+{% extends "admin/index.html" %}
+{% load i18n static %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | Co-Map Admin{% endblock %}
+
+{% block coltype %}colM{% endblock %}
+
+{% block content_title %}{% endblock %}
+{% block sidebar %}{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: #161b22;
+    --secondary: #21262d;
+    --accent: #e6edf3;
+    --accent-hover: #d0d7de;
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --text-dim: #484f58;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --blue: #58a6ff;
+    --purple: #bc8cff;
+    --radius-lg: 16px;
+    --transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+
+  #content { max-width: 100% !important; width: auto !important; padding: 32px 40px !important; }
+
+  #content h1 {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.6px;
+    margin-bottom: 32px;
+    color: var(--text);
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     BENTO GRID
+     ══════════════════════════════════════════════════════════════ */
+  .bento-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 32px;
+  }
+
+  .bento-colspan-2 { grid-column: span 2; }
+  .bento-colspan-3 { grid-column: span 3; }
+  .bento-colspan-4 { grid-column: span 4; }
+
+  @media (max-width: 1200px) {
+    .bento-grid { grid-template-columns: 1fr 1fr; }
+    .bento-colspan-2, .bento-colspan-3, .bento-colspan-4 { grid-column: span 2; }
+    #content { padding: 24px 20px !important; }
+  }
+  @media (max-width: 700px) {
+    .bento-grid { grid-template-columns: 1fr; }
+    .bento-colspan-2, .bento-colspan-3, .bento-colspan-4 { grid-column: span 1; }
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     BENTO CARD
+     ══════════════════════════════════════════════════════════════ */
+  .bento-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: border-color var(--transition), transform var(--transition), box-shadow var(--transition);
+  }
+
+  .bento-card:hover {
+    border-color: rgba(230,237,243,0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  }
+
+  .bento-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 24px 28px 0;
+    margin-bottom: 8px;
+  }
+
+  .bento-card-header .card-svg-icon {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    stroke: var(--text-muted);
+    stroke-width: 1.5;
+    fill: none;
+  }
+
+  .bento-card-header h3 {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin: 0;
+    flex: 1;
+  }
+
+  .bento-card-header .badge {
+    font-size: 11px;
+    color: var(--text-dim);
+    background: var(--secondary);
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-weight: 600;
+  }
+
+  .bento-card-body { padding: 12px 28px 28px; }
+  .bento-card-body.no-pad { padding: 0; }
+
+  /* ══════════════════════════════════════════════════════════════
+     STAT CARDS
+     ══════════════════════════════════════════════════════════════ */
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 28px;
+    text-decoration: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color var(--transition), transform var(--transition), box-shadow var(--transition);
+  }
+
+  .stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  }
+
+  .stat-card.total { border-top: 4px solid var(--blue); }
+  .stat-card.pending { border-top: 4px solid var(--yellow); }
+  .stat-card.resolved { border-top: 4px solid var(--green); }
+  .stat-card.rejected { border-top: 4px solid var(--red); }
+
+  .stat-card-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .stat-icon-wrap {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .stat-icon-wrap svg { width: 28px; height: 28px; stroke-width: 1.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+
+  .stat-card.total .stat-icon-wrap { background: rgba(88,166,255,0.12); }
+  .stat-card.total .stat-icon-wrap svg { stroke: var(--blue); }
+  .stat-card.pending .stat-icon-wrap { background: rgba(210,153,34,0.12); }
+  .stat-card.pending .stat-icon-wrap svg { stroke: var(--yellow); }
+  .stat-card.resolved .stat-icon-wrap { background: rgba(63,185,80,0.12); }
+  .stat-card.resolved .stat-icon-wrap svg { stroke: var(--green); }
+  .stat-card.rejected .stat-icon-wrap { background: rgba(248,81,73,0.12); }
+  .stat-card.rejected .stat-icon-wrap svg { stroke: var(--red); }
+
+  .stat-value {
+    font-size: 40px;
+    font-weight: 800;
+    color: var(--text);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -1px;
+  }
+
+  .stat-label { font-size: 14px; font-weight: 500; color: var(--text-muted); }
+  .stat-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+  /* ══════════════════════════════════════════════════════════════
+     STATUS BREAKDOWN
+     ══════════════════════════════════════════════════════════════ */
+  .status-bars { display: flex; flex-direction: column; gap: 18px; padding-top: 8px; }
+
+  .status-bar-row { display: flex; align-items: center; gap: 16px; }
+
+  .status-bar-label { width: 80px; font-size: 13px; font-weight: 600; color: var(--text-muted); flex-shrink: 0; }
+
+  .status-bar-track {
+    flex: 1;
+    height: 12px;
+    background: var(--secondary);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .status-bar-fill {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .status-bar-fill.approved { background: linear-gradient(90deg, #58a6ff, #1f6feb); }
+  .status-bar-fill.pending { background: linear-gradient(90deg, #d29922, #9e6a03); }
+  .status-bar-fill.resolved { background: linear-gradient(90deg, #3fb950, #238636); }
+  .status-bar-fill.rejected { background: linear-gradient(90deg, #f85149, #da3633); }
+
+  .status-bar-count {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    width: 32px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     GRADE DISTRIBUTION
+     ══════════════════════════════════════════════════════════════ */
+  .grade-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    padding-top: 8px;
+  }
+
+  .grade-item {
+    background: var(--secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 8px;
+    text-align: center;
+    transition: border-color var(--transition), transform var(--transition);
+  }
+
+  .grade-item:hover { border-color: var(--text-muted); transform: translateY(-1px); }
+
+  .grade-item .grade-letter {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--text);
+    line-height: 1;
+    letter-spacing: -0.5px;
+  }
+
+  .grade-item .grade-count { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+
+  /* ══════════════════════════════════════════════════════════════
+     QUICK ACTIONS
+     ══════════════════════════════════════════════════════════════ */
+  .quick-actions-list { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
+
+  .quick-action-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    background: var(--secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all var(--transition);
+  }
+
+  .quick-action-link:hover {
+    background: var(--border);
+    border-color: var(--text-muted);
+    color: var(--accent);
+    transform: translateY(-1px);
+  }
+
+  .quick-action-link .qa-svg {
+    width: 20px; height: 20px;
+    flex-shrink: 0;
+    stroke: var(--text-muted);
+    stroke-width: 1.5;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: stroke var(--transition);
+  }
+
+  .quick-action-link:hover .qa-svg { stroke: var(--accent); }
+
+  /* ══════════════════════════════════════════════════════════════
+     RECENT COMPLAINTS LIST
+     ══════════════════════════════════════════════════════════════ */
+  .complaint-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 28px;
+    border-bottom: 1px solid var(--border);
+    text-decoration: none;
+    transition: background 0.15s;
+  }
+
+  .complaint-item:last-child { border-bottom: none; }
+  .complaint-item:hover { background: rgba(230,237,243,0.03); }
+
+  .complaint-avatar {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    font-weight: 700;
+    overflow: hidden;
+  }
+
+  .complaint-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .complaint-info { flex: 1; min-width: 0; }
+
+  .complaint-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .complaint-meta { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
+
+  .complaint-score {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted);
+    padding: 4px 12px;
+    border-radius: 8px;
+    background: var(--secondary);
+    flex-shrink: 0;
+  }
+
+  .status-badge {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 14px;
+    border-radius: 20px;
+    flex-shrink: 0;
+  }
+
+  .status-badge.Pending { background: rgba(210,153,34,0.15); color: var(--yellow); }
+  .status-badge.Approved { background: rgba(88,166,255,0.15); color: var(--blue); }
+  .status-badge.Resolved { background: rgba(63,185,80,0.15); color: var(--green); }
+  .status-badge.Rejected { background: rgba(248,81,73,0.15); color: var(--red); }
+
+  .view-all-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px 28px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: color var(--transition);
+  }
+
+  .view-all-link:hover { color: var(--accent); }
+  .view-all-link svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.5; fill: none; }
+
+  /* ── Empty state ── */
+  .empty-state { text-align: center; padding: 48px 28px; color: var(--text-dim); }
+  .empty-state svg { width: 40px; height: 40px; stroke: var(--text-dim); stroke-width: 1.2; fill: none; margin-bottom: 16px; }
+  .empty-state p { font-size: 14px; margin: 0; }
+
+  /* ══════════════════════════════════════════════════════════════
+     RECENT ACTIVITY
+     ══════════════════════════════════════════════════════════════ */
+  .activity-list { display: flex; flex-direction: column; }
+
+  .activity-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    cursor: default;
+  }
+
+  .activity-item:last-child { border-bottom: none; }
+
+  .activity-icon {
+    width: 32px; height: 32px;
+    border-radius: 10px;
+    background: var(--secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .activity-icon svg { width: 16px; height: 16px; stroke: var(--text-muted); stroke-width: 1.5; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  .activity-text { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .activity-meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+  /* ══════════════════════════════════════════════════════════════
+     MODEL LIST CARDS (for all registered apps/models)
+     ══════════════════════════════════════════════════════════════ */
+  .model-list { list-style: none; margin: 0; padding: 0; }
+
+  .model-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+
+  .model-item:last-child { border-bottom: none; }
+  .model-item:hover { background: rgba(230,237,243,0.03); }
+
+  .model-item-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .model-item-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: var(--secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .model-item-icon svg { width: 18px; height: 18px; stroke: var(--text-muted); stroke-width: 1.5; fill: none; }
+
+  .model-item-info { flex: 1; min-width: 0; }
+
+  .model-item-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .model-item-count {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .model-item-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .model-action-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 14px;
+    background: var(--secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all var(--transition);
+  }
+
+  .model-action-link:hover {
+    background: var(--border);
+    color: var(--accent);
+    border-color: var(--text-muted);
+  }
+
+  .model-action-link svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    fill: none;
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     SECTION DIVIDER
+     ══════════════════════════════════════════════════════════════ */
+  .section-divider {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 8px 0 28px;
+  }
+
+  .section-divider hr {
+    flex: 1;
+    border: none;
+    border-top: 1px solid var(--border);
+  }
+
+  .section-divider span {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+
+  /* ── Hide Django default module list ── */
+  #content-main .module, #content-main .app-.complaints .section-card { display: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <h1>Dashboard</h1>
+
+  {% if complaint_stats %}
+  <!-- ════════════════════════════════════════════════════
+       ROW 1 — STAT CARDS
+       ════════════════════════════════════════════════════ -->
+  <div class="bento-grid">
+    <a href="{% url 'admin:complaints_complaint_changelist' %}" class="stat-card total">
+      <div class="stat-card-row">
+        <div class="stat-icon-wrap">
+          <svg viewBox="0 0 24 24">
+            <path d="M3 3v18h18"/>
+            <path d="M7 16l4-8 4 4 4-6"/>
+          </svg>
+        </div>
+        <div class="stat-value">{{ complaint_stats.total }}</div>
+      </div>
+      <div class="stat-label">Total Complaints</div>
+      {% if complaint_stats.trend_days %}<div class="stat-sub">{{ complaint_stats.trend_days }}d range</div>{% endif %}
+    </a>
+
+    <a href="{% url 'admin:complaints_complaint_changelist' %}?status__exact=Pending" class="stat-card pending">
+      <div class="stat-card-row">
+        <div class="stat-icon-wrap">
+          <svg viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 6v6l4 2"/>
+          </svg>
+        </div>
+        <div class="stat-value">{{ complaint_stats.pending }}</div>
+      </div>
+      <div class="stat-label">Pending</div>
+      <div class="stat-sub">{{ complaint_stats.pending_percent }}% of total</div>
+    </a>
+
+    <a href="{% url 'admin:complaints_complaint_changelist' %}?status__exact=Resolved" class="stat-card resolved">
+      <div class="stat-card-row">
+        <div class="stat-icon-wrap">
+          <svg viewBox="0 0 24 24">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <path d="M22 4 12 14.01l-3-3"/>
+          </svg>
+        </div>
+        <div class="stat-value">{{ complaint_stats.resolved }}</div>
+      </div>
+      <div class="stat-label">Resolved</div>
+      <div class="stat-sub">{{ complaint_stats.resolved_percent }}% resolution rate</div>
+    </a>
+
+    <a href="{% url 'admin:complaints_complaint_changelist' %}?status__exact=Rejected" class="stat-card rejected">
+      <div class="stat-card-row">
+        <div class="stat-icon-wrap">
+          <svg viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="m15 9-6 6"/>
+            <path d="m9 9 6 6"/>
+          </svg>
+        </div>
+        <div class="stat-value">{{ complaint_stats.rejected }}</div>
+      </div>
+      <div class="stat-label">Rejected</div>
+      <div class="stat-sub">{{ complaint_stats.rejected_percent }}% rejected</div>
+    </a>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════
+       ROW 2 — BREAKDOWN / ACTIONS / GRADES
+       ════════════════════════════════════════════════════ -->
+  <div class="bento-grid">
+    <div class="bento-card bento-colspan-2">
+      <div class="bento-card-header">
+        <svg class="card-svg-icon" viewBox="0 0 24 24" style="stroke:var(--blue)">
+          <path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/>
+        </svg>
+        <h3>Status Breakdown</h3>
+        <span class="badge">{{ complaint_stats.total }} total</span>
+      </div>
+      <div class="bento-card-body">
+        <div class="status-bars">
+          <div class="status-bar-row">
+            <span class="status-bar-label">Approved</span>
+            <div class="status-bar-track"><div class="status-bar-fill approved" style="width:{% widthratio complaint_stats.approved complaint_stats.total 100 %}%"></div></div>
+            <span class="status-bar-count">{{ complaint_stats.approved }}</span>
+          </div>
+          <div class="status-bar-row">
+            <span class="status-bar-label">Pending</span>
+            <div class="status-bar-track"><div class="status-bar-fill pending" style="width:{% widthratio complaint_stats.pending complaint_stats.total 100 %}%"></div></div>
+            <span class="status-bar-count">{{ complaint_stats.pending }}</span>
+          </div>
+          <div class="status-bar-row">
+            <span class="status-bar-label">Resolved</span>
+            <div class="status-bar-track"><div class="status-bar-fill resolved" style="width:{% widthratio complaint_stats.resolved complaint_stats.total 100 %}%"></div></div>
+            <span class="status-bar-count">{{ complaint_stats.resolved }}</span>
+          </div>
+          <div class="status-bar-row">
+            <span class="status-bar-label">Rejected</span>
+            <div class="status-bar-track"><div class="status-bar-fill rejected" style="width:{% widthratio complaint_stats.rejected complaint_stats.total 100 %}%"></div></div>
+            <span class="status-bar-count">{{ complaint_stats.rejected }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bento-card">
+      <div class="bento-card-header">
+        <svg class="card-svg-icon" viewBox="0 0 24 24" style="stroke:var(--yellow)">
+          <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+        <h3>Quick Actions</h3>
+      </div>
+      <div class="bento-card-body">
+        <div class="quick-actions-list">
+          <a href="{% url 'admin:complaints_complaint_add' %}" class="quick-action-link">
+            <svg class="qa-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+            New Complaint
+          </a>
+          <a href="{% url 'admin:complaints_complaint_changelist' %}?status__exact=Pending" class="quick-action-link">
+            <svg class="qa-svg" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+            Review Pending
+          </a>
+          <a href="/" target="_blank" class="quick-action-link">
+            <svg class="qa-svg" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            View Site
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="bento-card">
+      <div class="bento-card-header">
+        <svg class="card-svg-icon" viewBox="0 0 24 24" style="stroke:var(--purple)">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+        <h3>Grade Distribution</h3>
+      </div>
+      <div class="bento-card-body">
+        {% if grade_stats %}
+        <div class="grade-grid">
+          {% for g in grade_stats %}
+          <div class="grade-item">
+            <div class="grade-letter">{{ g.grade }}</div>
+            <div class="grade-count">{{ g.count }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding:12px 0 0;"><p>No grades yet</p></div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ════════════════════════════════════════════════════
+       ROW 3 — COMPLAINTS + ACTIVITY
+       ════════════════════════════════════════════════════ -->
+  <div class="bento-grid">
+    <div class="bento-card bento-colspan-3">
+      <div class="bento-card-header" style="padding-bottom:0;">
+        <svg class="card-svg-icon" viewBox="0 0 24 24">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+        </svg>
+        <h3>Recent Complaints</h3>
+        {% if recent_complaints %}<span class="badge">Latest {{ recent_complaints|length }}</span>{% endif %}
+      </div>
+      <div class="bento-card-body no-pad">
+        {% if recent_complaints %}
+          {% for complaint in recent_complaints %}
+          <a href="{% url 'admin:complaints_complaint_change' complaint.id %}" class="complaint-item">
+            <div class="complaint-avatar">
+              {% if complaint.photo %}<img src="{{ complaint.photo.url }}" alt="">{% else %}{{ complaint.title|first|upper }}{% endif %}
+            </div>
+            <div class="complaint-info">
+              <div class="complaint-title">{{ complaint.title }}</div>
+              <div class="complaint-meta">
+                {{ complaint.created_at|date:"M j, Y" }}
+                {% if complaint.city %} · {{ complaint.city }}{% endif %}
+                {% if complaint.category %} · {{ complaint.get_category_display }}{% endif %}
+              </div>
+            </div>
+            <span class="status-badge {{ complaint.status }}">{{ complaint.status }}</span>
+            {% if complaint.score is not None %}<span class="complaint-score">{{ complaint.score }}</span>{% endif %}
+          </a>
+          {% endfor %}
+          <a href="{% url 'admin:complaints_complaint_changelist' %}" class="view-all-link">
+            View all complaints
+            <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          </a>
+        {% else %}
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <p>No complaints yet. When complaints are submitted, they'll appear here.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="bento-card">
+      <div class="bento-card-header">
+        <svg class="card-svg-icon" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <h3>Recent Activity</h3>
+      </div>
+      <div class="bento-card-body no-pad">
+        {% load log %}
+        {% get_admin_log 8 as admin_log for_user user %}
+        {% if admin_log %}
+        <div class="activity-list">
+          {% for entry in admin_log %}
+          <div class="activity-item">
+            <div class="activity-icon">
+              {% if entry.is_addition %}<svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+              {% elif entry.is_change %}<svg viewBox="0 0 24 24"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg>
+              {% else %}<svg viewBox="0 0 24 24"><path d="m15 15-6 6m0-6 6 6"/></svg>
+              {% endif %}
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div class="activity-text">{{ entry.object_repr|truncatechars:30 }}</div>
+              <div class="activity-meta">{{ entry.action_time|timesince }} ago · {{ entry.content_type.model|title }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding:32px 20px;"><p>No recent activity</p></div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════
+       ROW 4 — ALL OTHER MODELS (visible bento cards)
+       ════════════════════════════════════════════════════ -->
+  <div class="section-divider">
+    <hr>
+    <span>All Models</span>
+    <hr>
+  </div>
+
+  <div class="bento-grid">
+    {% for app in app_list %}
+      {% for model in app.models %}
+      <div class="bento-card">
+        <div class="bento-card-body no-pad">
+          <div class="model-item" style="border-bottom:1px solid var(--border);padding:18px 20px;">
+            <div class="model-item-left">
+              <div class="model-item-icon">
+                {% if model.name|lower == 'users' or model.name|lower == 'user' %}
+                <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                {% elif model.name|lower == 'groups' or model.name|lower == 'group' %}
+                <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                {% elif 'report media' in model.name|lower %}
+                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                {% elif 'report score' in model.name|lower %}
+                <svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                {% elif model.name|lower == 'complaints' or model.name|lower == 'complaint' %}
+                <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                {% else %}
+                <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                {% endif %}
+              </div>
+              <div class="model-item-info">
+                <div class="model-item-name">{{ model.name }}</div>
+                <div class="model-item-count">{{ app.name }}</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:12px 20px;display:flex;gap:8px;">
+            {% if model.add_url %}
+            <a href="{{ model.add_url }}" class="model-action-link">
+              <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+              Add
+            </a>
+            {% endif %}
+            {% if model.admin_url %}
+            <a href="{{ model.admin_url }}" class="model-action-link">
+              <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              View
+            </a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    {% endfor %}
+  </div>
+
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const statValues = document.querySelectorAll('.stat-card .stat-value');
+    statValues.forEach(el => {
+      const final = parseInt(el.textContent);
+      if (isNaN(final)) return;
+      let current = 0;
+      const step = Math.max(1, Math.floor(final / 30));
+      const interval = setInterval(() => {
+        current = Math.min(current + step, final);
+        el.textContent = current;
+        if (current >= final) clearInterval(interval);
+      }, 30);
+    });
+
+    const fills = document.querySelectorAll('.status-bar-fill');
+    fills.forEach(bar => {
+      const w = bar.style.width;
+      bar.style.width = '0%';
+      setTimeout(() => { bar.style.width = w; }, 300);
+    });
+  });
+</script>
+{% endblock %}
