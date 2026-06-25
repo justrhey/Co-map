@@ -1,23 +1,81 @@
 from rest_framework import permissions, viewsets, filters
 from rest_framework.decorators import api_view, throttle_classes, action, permission_classes
 from rest_framework.response import Response
-from rest_framework.throttling import AnonRateThrottle
-from django.db.models import Count, Exists, OuterRef
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
+from rest_framework.settings import api_settings
+from django.db.models import Count, Exists, OuterRef, Q, Avg
+from django.db.models.functions import Round
 from django.utils import timezone
 from django.contrib.auth import get_user_model
-from .models import Complaint, ReportScore, Vote
+from .models import Complaint, ReportScore, Vote, Comment
 from .api import (
     ComplaintListSerializer, ComplaintDetailSerializer,
     ComplaintCreateSerializer, ComplaintStatusUpdateSerializer,
+    CommentSerializer,
 )
 import math
-from collections import defaultdict
+
+
+def get_client_ip(request):
+    """Resolve the real client IP, honoring REST_FRAMEWORK['NUM_PROXIES'].
+
+    With NUM_PROXIES=0 (default) a spoofed X-Forwarded-For is ignored and
+    REMOTE_ADDR is used. With N>0, the Nth-from-last XFF entry is trusted —
+    matching the value DRF's throttles key on, so rate limits can't be
+    bypassed by forging the header.
+    """
+    num_proxies = api_settings.NUM_PROXIES
+    xff = request.META.get('HTTP_X_FORWARDED_FOR')
+    remote = request.META.get('REMOTE_ADDR')
+    if num_proxies and xff:
+        addrs = [a.strip() for a in xff.split(',')]
+        return addrs[-min(num_proxies, len(addrs))]
+    return remote
 
 
 class SubmissionThrottle(AnonRateThrottle):
-    """Stricter throttle specifically for complaint submissions."""
+    """Stricter submission throttle for anonymous users (keyed by IP)."""
     scope = 'submission'
     rate = '10/hour'
+
+
+class SubmissionUserThrottle(UserRateThrottle):
+    """Same submission limit applied to authenticated users (keyed by user),
+    so logging in doesn't bypass the per-submission cap."""
+    scope = 'submission'
+    rate = '10/hour'
+
+
+class CommentThrottle(UserRateThrottle):
+    """Cap how fast a user can post comments, to stop thread flooding.
+    Rate comes from DEFAULT_THROTTLE_RATES['comment'] so it stays configurable."""
+    scope = 'comment'
+
+
+class VoteThrottle(UserRateThrottle):
+    """Light cap on vote toggling to stop count-spam loops.
+    Rate comes from DEFAULT_THROTTLE_RATES['vote']."""
+    scope = 'vote'
+
+
+class IsOwnerOrStaffOrReadOnly(permissions.BasePermission):
+    """Read for anyone; create for authenticated users; edit/delete only for
+    the complaint's owner or staff. Prevents users from mutating reports they
+    don't own."""
+
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return bool(request.user and request.user.is_authenticated)
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and (request.user.is_staff or obj.user_id == request.user.id)
+        )
 
 
 # ── Scoring Pipeline ─────────────────────────────────────────────
@@ -227,6 +285,50 @@ def compute_level(total_xp):
     }
 
 
+# ── User Credibility ─────────────────────────────────────────────
+# A reporter's credibility is the average QUALITY of the reports they file.
+# The same A-F thresholds used per report roll up into a single trust grade,
+# so the points/grades a user earns describe how reliable their reports are.
+
+_CRED_LABELS = {
+    'A': 'Highly Trusted',
+    'B': 'Trusted',
+    'C': 'Reliable',
+    'D': 'Developing',
+    'F': 'Unverified',
+}
+
+
+def _grade_for(avg):
+    """A-F grade from a 0-100 average (matches score_complaint thresholds)."""
+    if avg >= 90:
+        return 'A'
+    if avg >= 80:
+        return 'B'
+    if avg >= 70:
+        return 'C'
+    if avg >= 60:
+        return 'D'
+    return 'F'
+
+
+def compute_credibility(scores):
+    """
+    Roll a user's report scores into a credibility rating.
+
+    Returns {score, grade, label, count}. With no scored reports the user is
+    'Unrated'. Credibility is provisional until they have a few reports, so we
+    flag low sample sizes via `count` for the UI to show "based on N reports".
+    """
+    scores = list(scores)
+    n = len(scores)
+    if n == 0:
+        return {'score': None, 'grade': None, 'label': 'Unrated', 'count': 0}
+    avg = round(sum(s.total for s in scores) / n)
+    grade = _grade_for(avg)
+    return {'score': avg, 'grade': grade, 'label': _CRED_LABELS[grade], 'count': n}
+
+
 # ── Poetic Badges ────────────────────────────────────────────────
 
 POETIC_BADGE_DEFS = [
@@ -300,11 +402,18 @@ class ComplaintViewSet(viewsets.ModelViewSet):
     Returns full complaint data including score + media.
     """
     queryset = Complaint.objects.all()
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [IsOwnerOrStaffOrReadOnly]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['category', 'status']
     ordering_fields = ['created_at', 'category', 'status']
     ordering = ['-created_at']
+
+    def get_permissions(self):
+        # Anyone may browse the list (pins on the map), but viewing a single
+        # complaint's full details requires signing in.
+        if self.action == 'retrieve':
+            return [permissions.IsAuthenticated()]
+        return super().get_permissions()
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -316,12 +425,11 @@ class ComplaintViewSet(viewsets.ModelViewSet):
     def get_throttles(self):
         """Apply stricter rate limit on POST (create) vs. read-only actions."""
         if self.action == 'create':
-            return [SubmissionThrottle()]
+            return [SubmissionThrottle(), SubmissionUserThrottle()]
         return super().get_throttles()
 
     def perform_create(self, serializer):
-        xff = self.request.META.get('HTTP_X_FORWARDED_FOR')
-        ip = xff.split(',')[0].strip() if xff else self.request.META.get('REMOTE_ADDR')
+        ip = get_client_ip(self.request)
         complaint = serializer.save(
             ip_address=ip,
             user=self.request.user if self.request.user.is_authenticated else None,
@@ -375,9 +483,11 @@ class ComplaintViewSet(viewsets.ModelViewSet):
 
         return qs
 
-    @action(detail=True, methods=['patch'], url_path='status')
+    @action(detail=True, methods=['patch'], url_path='status',
+            permission_classes=[permissions.IsAdminUser])
     def update_status(self, request, pk=None):
-        """Update the status of a complaint with optional notes and resolution photo."""
+        """Update the status of a complaint with optional notes and resolution photo.
+        Staff-only — this is an official moderation action."""
         complaint = self.get_object()
         serializer = ComplaintStatusUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -404,7 +514,8 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         return Response(detail_serializer.data)
 
     @action(detail=True, methods=['post'], url_path='vote',
-            permission_classes=[permissions.IsAuthenticated])
+            permission_classes=[permissions.IsAuthenticated],
+            throttle_classes=[VoteThrottle])
     def vote(self, request, pk=None):
         """Toggle upvote on a complaint. POST to vote, re-POST to remove."""
         complaint = self.get_object()
@@ -419,6 +530,57 @@ class ComplaintViewSet(viewsets.ModelViewSet):
 
         vote_count = complaint.votes.count()
         return Response({'voted': voted, 'vote_count': vote_count})
+
+    @action(detail=True, methods=['get', 'post'], url_path='comments',
+            permission_classes=[permissions.AllowAny])
+    def comments(self, request, pk=None):
+        """List (GET, public) or post (POST, auth) comments on a report.
+
+        Any signed-in user may comment (not just the owner), so this action
+        opts out of the ViewSet's owner-only write permission and enforces its
+        own rules below: auth required + reporter must have opted in.
+        """
+        complaint = self.get_object()
+
+        if request.method == 'GET':
+            # Top-level comments only; replies come nested under each.
+            # select_related('complaint') so CommentSerializer.is_reporter
+            # doesn't fire a query per comment (N+1 fix).
+            qs = (complaint.comments.filter(hidden=False, parent__isnull=True)
+                  .select_related('user', 'complaint')
+                  .prefetch_related('replies__user', 'replies__complaint'))
+            return Response(CommentSerializer(qs, many=True, context={'request': request}).data)
+
+        # POST — must be authenticated and discussion must be open.
+        if not request.user.is_authenticated:
+            return Response({'detail': 'Sign in to join the discussion.'}, status=401)
+        if not complaint.discussion_enabled:
+            return Response({'detail': 'Discussion is not open for this report.'}, status=403)
+
+        # Rate-limit comment posting (thread-flood protection). Checked only on
+        # POST so public reads stay unthrottled by this scope.
+        for throttle in (CommentThrottle(),):
+            if not throttle.allow_request(request, self):
+                return Response(
+                    {'detail': "You're commenting too fast — please wait a moment."},
+                    status=429,
+                )
+
+        serializer = CommentSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+
+        # A reply must point at a top-level comment on THIS report.
+        parent = serializer.validated_data.get('parent')
+        if parent is not None and (parent.complaint_id != complaint.id or parent.parent_id is not None):
+            return Response({'detail': 'Invalid parent comment.'}, status=400)
+
+        comment = Comment.objects.create(
+            complaint=complaint,
+            user=request.user,
+            body=serializer.validated_data['body'],
+            parent=parent,
+        )
+        return Response(CommentSerializer(comment, context={'request': request}).data, status=201)
 
 
 @api_view(['GET'])
@@ -474,34 +636,37 @@ def admin_summary(request):
 @throttle_classes([AnonRateThrottle])
 def barangay_scores(request):
     """Returns health scores per barangay."""
-    qs = Complaint.objects.values('latitude', 'longitude', 'status')
-    open_count = qs.filter(status__in=['pending', 'approved']).count()
-    resolved_count = qs.filter(status='resolved').count()
+    open_count = Complaint.objects.filter(status__in=['pending', 'approved']).count()
+    resolved_count = Complaint.objects.filter(status='resolved').count()
     total = open_count + resolved_count or 1
     score = int((resolved_count / total) * 100)
 
-    areas = defaultdict(lambda: {'open': 0, 'resolved': 0, 'total': 0})
-    for c in Complaint.objects.all():
-        key = f"{c.latitude:.2f},{c.longitude:.2f}"
-        areas[key]['total'] += 1
-        if c.status == 'resolved':
-            areas[key]['resolved'] += 1
-        else:
-            areas[key]['open'] += 1
+    # Group by a ~0.01° grid cell at the database, then take the busiest 20.
+    grouped = (
+        Complaint.objects
+        .annotate(glat=Round('latitude', 2), glng=Round('longitude', 2))
+        .values('glat', 'glng')
+        .annotate(
+            cell_total=Count('id'),
+            resolved=Count('id', filter=Q(status='resolved')),
+        )
+        .order_by('-cell_total')[:20]
+    )
 
     area_scores = [
         {
-            'grid': key, 'total': d['total'], 'open': d['open'],
-            'resolved': d['resolved'],
-            'score': int((d['resolved'] / max(d['total'], 1)) * 100),
+            'grid': f"{g['glat']},{g['glng']}",
+            'total': g['cell_total'],
+            'open': g['cell_total'] - g['resolved'],
+            'resolved': g['resolved'],
+            'score': int((g['resolved'] / max(g['cell_total'], 1)) * 100),
         }
-        for key, d in areas.items()
+        for g in grouped
     ]
-    area_scores.sort(key=lambda x: x['total'], reverse=True)
 
     return Response({
         'overall': {'total': total, 'open': open_count, 'resolved': resolved_count, 'score': score},
-        'areas': area_scores[:20],
+        'areas': area_scores,
     })
 
 
@@ -536,21 +701,29 @@ def ai_analysis(request):
     recent_count = recent.count()
     daily_rate = round(recent_count / 7, 1) if recent_count else 0
 
-    # ── Quality analysis ──
+    # ── Quality analysis (aggregated at the DB) ──
     scores = ReportScore.objects.all()
-    avg_total = round(sum(s.total for s in scores) / scores.count(), 1) if scores.exists() else 0
-    grade_dist = {}
-    for s in scores:
-        grade_dist[s.letter_grade] = grade_dist.get(s.letter_grade, 0) + 1
+    agg = scores.aggregate(
+        avg=Avg('total'),
+        total_scores=Count('id'),
+        weak_specificity=Count('id', filter=Q(specificity__lt=12)),
+        weak_context=Count('id', filter=Q(context__lt=10)),
+        weak_clarity=Count('id', filter=Q(clarity__lt=10)),
+        weak_actionability=Count('id', filter=Q(actionability__lt=5)),
+    )
+    avg_total = round(agg['avg'], 1) if agg['avg'] is not None else 0
+    grade_dist = {
+        row['letter_grade']: row['count']
+        for row in scores.values('letter_grade').annotate(count=Count('id'))
+    }
 
-    weak_areas = {'specificity': 0, 'context': 0, 'clarity': 0, 'actionability': 0}
-    for s in scores:
-        if s.specificity < 12: weak_areas['specificity'] += 1
-        if s.context < 10: weak_areas['context'] += 1
-        if s.clarity < 10: weak_areas['clarity'] += 1
-        if s.actionability < 5: weak_areas['actionability'] += 1
-
-    total_scores = scores.count() or 1
+    total_scores = agg['total_scores'] or 1
+    weak_areas = {
+        'specificity': agg['weak_specificity'],
+        'context': agg['weak_context'],
+        'clarity': agg['weak_clarity'],
+        'actionability': agg['weak_actionability'],
+    }
     weak_areas_pct = {k: round(v / total_scores * 100, 1) for k, v in weak_areas.items()}
 
     # ── Insights generation ──
@@ -597,12 +770,13 @@ def ai_analysis(request):
             'detail': f'Average score is {avg_total}/100. Encourage users to add location details, photos, and specific descriptions.',
         })
 
-    if weak_areas_pct.get('specificity', 0) > 50:
+    # 'context' is the detail-quality dimension (location/time/people signals).
+    if weak_areas_pct.get('context', 0) > 50:
         insights.append({
             'type': 'tip',
             'emoji': '📍',
             'title': 'Reports lack location specifics',
-            'detail': f'{weak_areas_pct["specificity"]}% of reports miss street names or landmarks. Add a hint in the submission form.',
+            'detail': f'{weak_areas_pct["context"]}% of reports miss street names, timing, or who is affected. Add a hint in the submission form.',
         })
 
     if recent_count == 0 and total > 0:
@@ -613,16 +787,16 @@ def ai_analysis(request):
             'detail': 'No reports in the last 7 days. Consider promoting the platform.',
         })
 
-    # ── Hotspot grid (cluster analysis) ──
-    from collections import Counter
-    grid = Counter()
-    for c in Complaint.objects.all():
-        key = (round(c.latitude, 2), round(c.longitude, 2))
-        grid[key] += 1
-
+    # ── Hotspot grid (cluster analysis, grouped at the DB) ──
     clusters = [
-        {'lat': k[0], 'lng': k[1], 'count': v}
-        for k, v in grid.most_common(10)
+        {'lat': g['glat'], 'lng': g['glng'], 'count': g['count']}
+        for g in (
+            Complaint.objects
+            .annotate(glat=Round('latitude', 2), glng=Round('longitude', 2))
+            .values('glat', 'glng')
+            .annotate(count=Count('id'))
+            .order_by('-count')[:10]
+        )
     ]
 
     return Response({
@@ -650,7 +824,7 @@ def user_stats(request):
     if request.user.is_authenticated:
         user_reports = Complaint.objects.filter(user=request.user)
     else:
-        ip = request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip() or request.META.get('REMOTE_ADDR', '')
+        ip = get_client_ip(request)
         user_reports = Complaint.objects.filter(ip_address=ip)
     total = user_reports.count()
 
@@ -695,22 +869,25 @@ def user_stats(request):
     else:
         by_status = []
 
-    # Average score
+    # Average score + credibility (rolled up from report quality)
     avg_score = None
     total_xp = 0
+    score_list = []
     if total > 0:
-        scores = ReportScore.objects.filter(complaint__in=user_reports)
-        if scores.exists():
-            avg_score = int(sum(s.total for s in scores) / scores.count())
-            total_xp = sum(s.total for s in scores)
+        score_list = list(ReportScore.objects.filter(complaint__in=user_reports))
+        if score_list:
+            avg_score = int(sum(s.total for s in score_list) / len(score_list))
+            total_xp = sum(s.total for s in score_list)
 
     level_info = compute_level(total_xp)
+    credibility = compute_credibility(score_list)
 
     return Response({
         'total_reports': total,
         'streak': streak,
         'badges': badges,
         'avg_score': avg_score,
+        'credibility': credibility,
         'total_xp': total_xp,
         'level': level_info,
         'by_status': {item['status']: item['count'] for item in by_status},
@@ -726,7 +903,7 @@ def user_profile(request):
     if request.user.is_authenticated:
         user_reports = Complaint.objects.filter(user=request.user).order_by('-created_at')
     else:
-        ip = request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip() or request.META.get('REMOTE_ADDR', '')
+        ip = get_client_ip(request)
         user_reports = Complaint.objects.filter(ip_address=ip).order_by('-created_at')
 
     total = user_reports.count()
@@ -791,6 +968,7 @@ def user_profile(request):
         'total_reports': total,
         'streak': streak,
         'avg_score': avg_score,
+        'credibility': compute_credibility(list(scores)),
         'badges': badges,
         'total_xp': total_xp,
         'level': compute_level(total_xp),

@@ -4,12 +4,47 @@
 import { useState, useEffect } from 'react';
 import { fetchAnalysis } from '../api';
 
-const TYPE_STYLES = {
-  alert: { icon: '🔴', color: '#ef4444' },
-  trend: { icon: '📊', color: '#3b82f6' },
-  success: { icon: '✅', color: '#22c55e' },
-  tip: { icon: '💡', color: '#f59e0b' },
+const TYPE_COLORS = {
+  alert: '#ef4444',
+  trend: '#3b82f6',
+  success: '#22c55e',
+  tip: '#f59e0b',
 };
+
+// ── Reverse-geocode a cluster's coordinate to a short, human area name. ──
+const _clusterAddrCache = new Map();
+function shortAreaName(data) {
+  const a = data?.address || {};
+  const area = a.neighbourhood || a.suburb || a.quarter || a.village || a.town || a.city_district;
+  const city = a.city || a.town || a.municipality || a.county;
+  if (area && city && area !== city) return `${area}, ${city}`;
+  return area || city || data?.display_name?.split(',').slice(0, 2).join(',') || null;
+}
+
+function ClusterAddress({ lat, lng }) {
+  const [name, setName] = useState(null);
+
+  useEffect(() => {
+    const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+    if (_clusterAddrCache.has(key)) { setName(_clusterAddrCache.get(key)); return; }
+    let active = true;
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1&zoom=16`,
+          { headers: { 'Accept-Language': 'en' } }
+        );
+        const json = await res.json();
+        const label = shortAreaName(json);
+        if (label) _clusterAddrCache.set(key, label);
+        if (active) setName(label);
+      } catch { /* keep fallback */ }
+    }, 300);
+    return () => { active = false; clearTimeout(t); };
+  }, [lat, lng]);
+
+  return <span className="analysis-cluster-coord">{name || 'Locating area…'}</span>;
+}
 
 export default function AnalysisPanel({ open, onClose }) {
   const [data, setData] = useState(null);
@@ -69,7 +104,7 @@ export default function AnalysisPanel({ open, onClose }) {
                   <div className="analysis-insights">
                     {data.insights.map((insight, i) => (
                       <div key={i} className={`analysis-insight type-${insight.type}`}>
-                        <span className="analysis-insight-emoji">{insight.emoji}</span>
+                        <span className="analysis-insight-dot" style={{ background: TYPE_COLORS[insight.type] || '#666' }} />
                         <div className="analysis-insight-body">
                           <span className="analysis-insight-title">{insight.title}</span>
                           <span className="analysis-insight-detail">{insight.detail}</span>
@@ -144,7 +179,7 @@ export default function AnalysisPanel({ open, onClose }) {
                     {data.hotspot_clusters.slice(0, 5).map((c, i) => (
                       <div key={i} className="analysis-cluster">
                         <span className="analysis-cluster-rank">{i + 1}</span>
-                        <span className="analysis-cluster-coord">{c.lat.toFixed(3)}, {c.lng.toFixed(3)}</span>
+                        <ClusterAddress lat={c.lat} lng={c.lng} />
                         <span className="analysis-cluster-count">{c.count} reports</span>
                       </div>
                     ))}

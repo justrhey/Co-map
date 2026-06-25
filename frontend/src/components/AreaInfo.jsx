@@ -3,12 +3,8 @@
  * Fetches Wikipedia articles near the current map center.
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useMap } from 'react-leaflet';
 
-const FETCH_THROTTLE_DIST = 0.008;
-
-export default function AreaInfo({ visible }) {
-  const map = useMap();
+export default function AreaInfo({ visible, center }) {
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(null);
@@ -57,25 +53,14 @@ export default function AreaInfo({ visible }) {
     }
   }, []);
 
-  // Fetch when map center changes
+  // Fetch when the map center (passed in) changes.
   useEffect(() => {
-    if (!visible) { setArticles([]); return; }
-
-    const handleMove = () => {
-      const center = map.getCenter();
-      const key = `${center.lat.toFixed(3)},${center.lng.toFixed(3)}`;
-      if (lastKeyRef.current === key) return;
-      lastKeyRef.current = key;
-      fetchArticles(center.lat, center.lng);
-    };
-
-    // Fetch immediately
-    const center = map.getCenter();
-    lastKeyRef.current = `${center.lat.toFixed(3)},${center.lng.toFixed(3)}`;
+    if (!visible || !center) { setArticles([]); return; }
+    const key = `${center.lat.toFixed(3)},${center.lng.toFixed(3)}`;
+    if (lastKeyRef.current === key) return;
+    lastKeyRef.current = key;
     fetchArticles(center.lat, center.lng);
-    map.on('moveend', handleMove);
-    return () => map.off('moveend', handleMove);
-  }, [map, visible, fetchArticles]);
+  }, [visible, center, fetchArticles]);
 
   if (!visible || articles.length === 0) return null;
 

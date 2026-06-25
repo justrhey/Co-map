@@ -7,15 +7,15 @@ class Complaint(models.Model):
     """A community-submitted complaint pinned to a geographic location."""
 
     class Category(models.TextChoices):
-        POTHOLES = 'potholes', 'Potholes / Road Damage'
-        STREETLIGHT = 'streetlight', 'Broken Streetlight'
-        GRAFFITI = 'graffiti', 'Graffiti / Vandalism'
-        ILLEGAL_DUMPING = 'illegal_dumping', 'Illegal Dumping'
-        SIDEWALK = 'sidewalk', 'Damaged Sidewalk'
-        TRAFFIC = 'traffic', 'Traffic Sign / Signal Issue'
-        NOISE = 'noise', 'Noise Complaint'
-        PARK = 'park', 'Park / Public Space Issue'
-        WATER = 'water', 'Water / Drainage Issue'
+        POTHOLES = 'potholes', 'Roads'
+        STREETLIGHT = 'streetlight', 'Lighting'
+        GRAFFITI = 'graffiti', 'Vandalism'
+        ILLEGAL_DUMPING = 'illegal_dumping', 'Garbage'
+        SIDEWALK = 'sidewalk', 'Walkways'
+        TRAFFIC = 'traffic', 'Traffic'
+        NOISE = 'noise', 'Noise'
+        PARK = 'park', 'Public Space'
+        WATER = 'water', 'Flooding'
         OTHER = 'other', 'Other'
 
     class Status(models.TextChoices):
@@ -76,6 +76,10 @@ class Complaint(models.Model):
     resolved_at = models.DateTimeField(null=True, blank=True)
     resolution_photo = models.ImageField(upload_to='resolution_photos/', blank=True)
     official_notes = models.TextField(blank=True, default='')
+    discussion_enabled = models.BooleanField(
+        default=False,
+        help_text="Reporter opted in to let neighbors discuss this report",
+    )
 
     class Meta:
         ordering = ['-created_at']
@@ -120,10 +124,12 @@ class ReportScore(models.Model):
     total = models.IntegerField(default=0, help_text="Overall score 0-100")
     letter_grade = models.CharField(max_length=1, default='F')
 
-    # Dimension breakdowns
-    specificity = models.IntegerField(default=0, help_text="Locations, measurements, landmarks (0-30)")
-    context = models.IntegerField(default=0, help_text="Time, frequency, affected people (0-25)")
-    clarity = models.IntegerField(default=0, help_text="Well-structured description (0-20)")
+    # Dimension breakdowns — ranges match the score_complaint() computation
+    # and the frontend's denominators. Field names are kept for API/frontend
+    # compatibility; the help_text describes what each value actually measures.
+    specificity = models.IntegerField(default=0, help_text="Structure: situation/impact/action fields filled (0-25)")
+    context = models.IntegerField(default=0, help_text="Detail quality: location, time, people, sensory signals (0-30)")
+    clarity = models.IntegerField(default=0, help_text="Coherence: tells a complete story (0-20)")
     completeness = models.IntegerField(default=0, help_text="Photo, impact, action requested (0-15)")
     actionability = models.IntegerField(default=0, help_text="Suggested action (0-10)")
 
@@ -165,3 +171,40 @@ class Vote(models.Model):
 
     def __str__(self):
         return f"Vote by {self.user_id} on complaint#{self.complaint_id}"
+
+
+class Comment(models.Model):
+    """A neighbor's comment on a report's discussion thread.
+
+    Only created when the report's reporter opted in (discussion_enabled).
+    """
+    complaint = models.ForeignKey(
+        Complaint,
+        on_delete=models.CASCADE,
+        related_name='comments',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='comments',
+    )
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='replies',
+        help_text="Parent comment if this is a reply",
+    )
+    body = models.TextField(help_text="Comment text")
+    hidden = models.BooleanField(
+        default=False,
+        help_text="Hidden by staff moderation",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Comment by {self.user_id} on complaint#{self.complaint_id}"

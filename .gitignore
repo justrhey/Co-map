@@ -23,6 +23,10 @@ Thumbs.db
 # Environment
 .env
 .env.local
+.env.example
+
+# Logs
+*.log
 
 # Output
 _bmad-output/

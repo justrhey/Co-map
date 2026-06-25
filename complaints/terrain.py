@@ -9,6 +9,7 @@ the Overpass API as a fallback for features not covered by the static set.
 import math
 import logging
 import requests
+from django.conf import settings
 from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
@@ -325,7 +326,12 @@ def is_water_terrain(lat: float, lng: float) -> bool:
         cache.set(cache_key, True, 3600)
         return True
 
-    # Layer 2: Overpass API fallback for smaller / unmapped features
+    # Layer 2: Overpass API fallback — disabled by default so the submission
+    # request never blocks on a synchronous external call. Enable explicitly
+    # via TERRAIN_OVERPASS_ENABLED once it runs off the request path.
+    if not getattr(settings, 'TERRAIN_OVERPASS_ENABLED', False):
+        return False
+
     result = _overpass_water_check(lat, lng)
 
     if result is None:

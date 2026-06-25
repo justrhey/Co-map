@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import Complaint, ReportMedia, ReportScore
+from .models import Complaint, ReportMedia, ReportScore, Comment
 
 
 class ReportMediaInline(admin.TabularInline):
@@ -108,3 +108,22 @@ class ReportMediaAdmin(admin.ModelAdmin):
 class ReportScoreAdmin(admin.ModelAdmin):
     list_display = ['complaint_id', 'total', 'letter_grade', 'specificity', 'context', 'clarity', 'completeness', 'actionability']
     list_filter = ['letter_grade']
+
+
+class CommentAdmin(admin.ModelAdmin):
+    list_display = ['id', 'complaint_id', 'user', 'short_body', 'hidden', 'created_at']
+    list_filter = ['hidden', 'created_at']
+    search_fields = ['body', 'complaint_id']
+    actions = ['hide_comments', 'unhide_comments']
+
+    @admin.display(description='Comment')
+    def short_body(self, obj):
+        return (obj.body[:60] + '…') if len(obj.body) > 60 else obj.body
+
+    @admin.action(description="Hide selected comments")
+    def hide_comments(self, request, queryset):
+        queryset.update(hidden=True)
+
+    @admin.action(description="Unhide selected comments")
+    def unhide_comments(self, request, queryset):
+        queryset.update(hidden=False)

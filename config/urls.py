@@ -7,13 +7,16 @@ from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
 from complaints.views import ComplaintViewSet, public_summary, admin_summary, barangay_scores, ai_analysis, user_stats, user_profile
-from complaints.auth import RegisterView, LoginView, LogoutView, MeView, social_auth_urls
+from complaints.auth import RegisterView, LoginView, LogoutView, MeView, social_auth_urls, social_complete, verify_email, ResendVerificationView
 
 router = DefaultRouter()
 router.register(r'complaints', ComplaintViewSet, basename='complaint')
 
 urlpatterns = [
     path('admin/', admin_site.urls),
+
+    # Social auth (Google/GitHub) — provides /accounts/<provider>/login/
+    path('accounts/', include('allauth.urls')),
 
     # API
     path('api/', include(router.urls)),
@@ -30,6 +33,9 @@ urlpatterns = [
     path('api/auth/logout/', LogoutView.as_view(), name='auth-logout'),
     path('api/auth/me/', MeView.as_view(), name='auth-me'),
     path('api/auth/social-urls/', social_auth_urls, name='auth-social-urls'),
+    path('api/auth/social-complete/', social_complete, name='auth-social-complete'),
+    path('api/auth/verify-email/', verify_email, name='auth-verify-email'),
+    path('api/auth/resend-verification/', ResendVerificationView.as_view(), name='auth-resend-verification'),
 ]
 
 # Serve media files in development

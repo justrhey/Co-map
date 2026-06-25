@@ -18,144 +18,185 @@ export function setToken(token) {
 export function getToken() { return _token; }
 export function isLoggedIn() { return !!_token; }
 
+// ── Error handling ─────────────────────────────────────────────
+// One Error type the UI can branch on (err.kind) and always show safely.
+export class ApiError extends Error {
+  constructor(message, { kind = 'error', status = 0 } = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.kind = kind;     // network | offline | auth | rate | server | validation | error
+    this.status = status;
+  }
+}
+
+// Parse a JSON body only when the server actually sent JSON. A 403/500 often
+// returns an HTML page — calling res.json() on that throws "Unexpected token <"
+// and buries the real problem (this caused the old silent login failure).
+async function safeJson(res) {
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) return null;
+  try { return await res.json(); } catch { return null; }
+}
+
+// Turn a DRF error body into one human sentence.
+function messageFromBody(data) {
+  if (!data) return '';
+  if (typeof data === 'string') return data;
+  if (data.error) return data.error;
+  if (data.detail) return data.detail;
+  // Field errors: { photo: ["required"], location: "in water" } → joined.
+  try {
+    const parts = Object.values(data).flat().filter(v => typeof v === 'string');
+    return parts.join(' ');
+  } catch { return ''; }
+}
+
+/**
+ * Single fetch wrapper. Always resolves to parsed data on success, or throws an
+ * ApiError with a friendly, user-facing `.message` and a `.kind` on failure.
+ */
+async function apiFetch(path, { method = 'GET', json, body, headers = {}, auth = true } = {}) {
+  const opts = { method, headers: { ...(auth ? authHeaders() : {}), ...headers } };
+  if (json !== undefined) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(json);
+  } else if (body !== undefined) {
+    opts.body = body; // FormData — let the browser set the multipart boundary.
+  }
+
+  let res;
+  try {
+    res = await fetch(`${API}${path}`, opts);
+  } catch {
+    // fetch only rejects on a true network failure (offline, DNS, server down).
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      throw new ApiError("You're offline. Check your connection and try again.", { kind: 'offline' });
+    }
+    throw new ApiError("Can't reach the server. Please try again in a moment.", { kind: 'network' });
+  }
+
+  if (res.ok) {
+    return res.status === 204 ? null : safeJson(res);
+  }
+
+  const data = await safeJson(res);
+  const detail = messageFromBody(data);
+
+  if (res.status === 429) {
+    throw new ApiError(detail || "You're doing that a little too fast — please wait a moment and try again.", { kind: 'rate', status: 429 });
+  }
+  if (res.status === 401 || res.status === 403) {
+    throw new ApiError(detail || 'Your session has expired. Please sign in again.', { kind: 'auth', status: res.status });
+  }
+  if (res.status === 400) {
+    throw new ApiError(detail || 'Please check the form and try again.', { kind: 'validation', status: 400 });
+  }
+  if (res.status >= 500) {
+    throw new ApiError('Something went wrong on our end. Please try again shortly.', { kind: 'server', status: res.status });
+  }
+  throw new ApiError(detail || 'Request failed. Please try again.', { kind: 'error', status: res.status });
+}
+
 // ── Auth API ───────────────────────────────────────────────────
 export async function register(email, password, name) {
-  const res = await fetch(`${API}/auth/register/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, name }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Registration failed');
-  setToken(data.token);
-  return data;
+  // Register no longer returns a token — the account must verify email first.
+  // Returns { detail: 'verification_sent', message, email }.
+  return apiFetch('/auth/register/', { method: 'POST', auth: false, json: { email, password, name } });
+}
+
+export async function resendVerification(email) {
+  return apiFetch('/auth/resend-verification/', { method: 'POST', auth: false, json: { email } });
 }
 
 export async function login(email, password) {
-  const res = await fetch(`${API}/auth/login/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Login failed');
+  const data = await apiFetch('/auth/login/', { method: 'POST', auth: false, json: { email, password } });
   setToken(data.token);
   return data;
 }
 
 export async function logout() {
   if (_token) {
-    await fetch(`${API}/auth/logout/`, {
-      method: 'POST',
-      headers: authHeaders(),
-    }).catch(() => {});
+    await apiFetch('/auth/logout/', { method: 'POST' }).catch(() => {});
   }
   setToken(null);
 }
 
 export async function fetchMe() {
   if (!_token) return null;
-  const res = await fetch(`${API}/auth/me/`, { headers: authHeaders() });
-  if (!res.ok) { setToken(null); return null; }
-  return res.json();
+  try {
+    return await apiFetch('/auth/me/');
+  } catch (err) {
+    if (err.kind === 'auth') setToken(null); // stale token — drop it
+    return null;
+  }
 }
 
 // ── Complaints ─────────────────────────────────────────────────
 export async function fetchComplaints(params = {}) {
   const qs = new URLSearchParams({ page: '1', ...params });
-  const res = await fetch(`${API}/complaints/?${qs}`);
-  if (!res.ok) throw new Error('Failed to load complaints');
-  return res.json();
+  return apiFetch(`/complaints/?${qs}`, { auth: false });
 }
 
 export async function fetchComplaint(id) {
-  const res = await fetch(`${API}/complaints/${id}/`);
-  if (!res.ok) throw new Error('Complaint not found');
-  return res.json();
+  return apiFetch(`/complaints/${id}/`);
 }
 
 export async function createComplaint(data) {
   const hasFiles = data.photo instanceof File || (data.additional_media?.length > 0);
-  const body = hasFiles ? new FormData() : JSON.stringify(data);
-  const headers = { ...authHeaders() };
-
-  if (body instanceof FormData) {
+  if (hasFiles) {
+    const fd = new FormData();
     Object.entries(data).forEach(([key, value]) => {
       if (key === 'additional_media' && Array.isArray(value)) {
-        value.forEach(file => body.append('additional_media', file));
+        value.forEach(file => fd.append('additional_media', file));
       } else if (value !== null && value !== undefined && value !== '') {
-        body.append(key, value);
+        fd.append(key, value);
       }
     });
-    delete headers['Content-Type'];
-  } else {
-    headers['Content-Type'] = 'application/json';
+    return apiFetch('/complaints/', { method: 'POST', body: fd });
   }
-
-  const res = await fetch(`${API}/complaints/`, {
-    method: 'POST',
-    headers,
-    body,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(Object.values(err).flat().join(', ') || 'Submission failed');
-  }
-  return res.json();
+  return apiFetch('/complaints/', { method: 'POST', json: data });
 }
 
 export async function updateComplaintStatus(id, data) {
-  const body = data.resolution_photo instanceof File ? new FormData() : JSON.stringify(data);
-  const headers = { ...authHeaders() };
-  if (body instanceof FormData) {
+  if (data.resolution_photo instanceof File) {
+    const fd = new FormData();
     Object.entries(data).forEach(([key, value]) => {
-      if (value !== null && value !== undefined && value !== '') body.append(key, value);
+      if (value !== null && value !== undefined && value !== '') fd.append(key, value);
     });
-    delete headers['Content-Type'];
+    return apiFetch(`/complaints/${id}/status/`, { method: 'PATCH', body: fd });
   }
-  const res = await fetch(`${API}/complaints/${id}/status/`, { method: 'PATCH', headers, body });
-  if (!res.ok) throw new Error('Status update failed');
-  return res.json();
+  return apiFetch(`/complaints/${id}/status/`, { method: 'PATCH', json: data });
 }
 
 export async function fetchAdminSummary() {
-  const res = await fetch(`${API}/public/admin/`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to load admin data');
-  return res.json();
+  return apiFetch('/public/admin/');
 }
 
 export async function fetchBarangayScores() {
-  const res = await fetch(`${API}/public/scores/`);
-  if (!res.ok) throw new Error('Failed to load scores');
-  return res.json();
+  return apiFetch('/public/scores/', { auth: false });
 }
 
 export async function fetchUserStats() {
-  const res = await fetch(`${API}/user/stats/`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to load stats');
-  return res.json();
+  return apiFetch('/user/stats/');
 }
 
 export async function fetchUserProfile() {
-  const res = await fetch(`${API}/user/profile/`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to load profile');
-  return res.json();
+  return apiFetch('/user/profile/');
 }
 
 export async function fetchAnalysis() {
-  const res = await fetch(`${API}/public/analysis/`);
-  if (!res.ok) throw new Error('Failed to load analysis');
-  return res.json();
+  return apiFetch('/public/analysis/', { auth: false });
 }
 
 export async function toggleVote(complaintId) {
-  const res = await fetch(`${API}/complaints/${complaintId}/vote/`, {
-    method: 'POST',
-    headers: authHeaders(),
-  });
-  if (!res.ok) {
-    if (res.status === 401) throw new Error('Sign in required');
-    throw new Error('Vote failed');
-  }
-  return res.json();
+  return apiFetch(`/complaints/${complaintId}/vote/`, { method: 'POST' });
+}
+
+// ── Discussion comments ────────────────────────────────────────
+export async function fetchComments(complaintId) {
+  return apiFetch(`/complaints/${complaintId}/comments/`, { auth: false });
+}
+
+export async function postComment(complaintId, body, parent = null) {
+  return apiFetch(`/complaints/${complaintId}/comments/`, { method: 'POST', json: parent ? { body, parent } : { body } });
 }

@@ -46,17 +46,31 @@ psql complaints_db -c "GRANT ALL ON SCHEMA public TO complaints_user;"
 
 ```bash
 python manage.py migrate
-python manage.py createsuperuser  # admin / admin123
-python manage.py seed_complaints  # optional: load sample data
+python manage.py createsuperuser
+python manage.py seed_data  # optional: load sample data
 ```
 
-### 4. Start Development Server
+### 4. Start the Backend
 
 ```bash
 python manage.py runserver 0.0.0.0:8000
 ```
 
-Visit **http://localhost:8000** for the map UI and **http://localhost:8000/admin/** for moderation.
+This serves the **API** at `http://localhost:8000/api/` and the **moderation admin**
+at `http://localhost:8000/admin/`.
+
+### 5. Start the Frontend (separate Vite dev server)
+
+The map UI is a standalone React app that talks to the API via CORS:
+
+```bash
+cd frontend
+npm install
+npm run dev      # http://localhost:5173
+```
+
+Visit **http://localhost:5173** for the map UI. (Run `npm run build` to produce a
+static bundle in `frontend/dist/` for deployment behind your own web server/CDN.)
 
 ### Docker (Production)
 
@@ -69,11 +83,19 @@ docker compose up -d
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/complaints/` | List complaints (paginated, 50/page) |
-| `POST` | `/api/complaints/` | Submit a complaint |
+| `POST` | `/api/complaints/` | Submit a complaint (10/hour limit) |
 | `GET` | `/api/complaints/:id/` | Get complaint details |
-| `DELETE` | `/api/complaints/:id/` | Delete a complaint |
+| `PATCH`/`DELETE` | `/api/complaints/:id/` | Edit/delete — **owner or staff only** |
+| `PATCH` | `/api/complaints/:id/status/` | Update status — **staff only** (moderation) |
+| `POST` | `/api/complaints/:id/vote/` | Toggle upvote — authenticated |
+| `GET` | `/api/public/summary/` | Public aggregate summary |
+| `GET` | `/api/public/scores/` | Per-area resolution scores |
+| `GET` | `/api/public/analysis/` | Trend/quality insights |
+| `GET` | `/api/user/stats/`, `/api/user/profile/` | Reporter stats, badges, XP |
+| `POST` | `/api/auth/register/`, `/api/auth/login/`, `/api/auth/logout/` | Email/password auth |
+| `GET` | `/api/auth/me/`, `/api/auth/social-urls/` | Profile + SSO provider links |
 
-**Query params**: `?category=potholes` `?status=pending` `?page=2`
+**Query params**: `?category=potholes` `?status=pending` `?page=2` `?lat=&lng=&radius=` (km)
 
 **POST body**:
 ```json
