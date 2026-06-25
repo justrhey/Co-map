@@ -8,13 +8,24 @@ import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'django-insecure-change-me-in-production!!'
-)
+from django.core.exceptions import ImproperlyConfigured
 
+_INSECURE_SECRET = 'django-insecure-change-me-in-production!!'
+# 🔑 PRODUCTION: Set DJANGO_SECRET_KEY env var to a unique, long random string.
+#   Generate one: python -c "import secrets; print(secrets.token_urlsafe(50))"
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', _INSECURE_SECRET)
+
+# 🔧 PRODUCTION: Set DJANGO_DEBUG=False when deploying live.
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
 
+# Refuse to run in production with the throwaway dev secret.
+if not DEBUG and SECRET_KEY == _INSECURE_SECRET:
+    raise ImproperlyConfigured(
+        'DJANGO_SECRET_KEY must be set to a unique secret when DEBUG=False.'
+    )
+
+# 🌐 PRODUCTION: Set DJANGO_ALLOWED_HOSTS to your domain(s), comma-separated.
+#   Example: DJANGO_ALLOWED_HOSTS=comap.example.com,api.comap.example.com
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 # ── Installed Apps ────────────────────────────────────────────────
@@ -81,6 +92,10 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
+        # 🗄️ PRODUCTION: Set all POSTGRES_* env vars (DB, USER, PASSWORD, HOST, PORT).
+        #   Never hardcode database credentials in the source.
+        #   For managed DBs (Railway, Render, Supabase, RDS), copy the
+        #   connection details they provide into env vars.
         'NAME': os.environ.get('POSTGRES_DB', 'complaints_db'),
         'USER': os.environ.get('POSTGRES_USER', 'complaints_user'),
         'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'complaints_pass'),
@@ -111,9 +126,14 @@ else:
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 50,
+    # Token first: this is a token-based SPA. If SessionAuthentication runs
+    # first and a (valid) admin/allauth session cookie is present, it enforces
+    # CSRF on POST/PATCH and 403s the token request before the token is read.
+    # TokenAuthentication wins for any request carrying an Authorization header;
+    # SessionAuthentication remains as a fallback for the admin/browsable API.
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
@@ -123,12 +143,31 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
     ],
+    # Rates are env-overridable so dev can run loose and prod can stay strict.
+    # `anon` covers public read endpoints (map/scores/summary) which are hit
+    # frequently and legitimately, so it has the most headroom.
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '600/hour',
-        'user': '6000/hour',
-        'submission': '10/hour',
+        'anon': os.environ.get('THROTTLE_ANON', '2000/hour'),
+        'user': os.environ.get('THROTTLE_USER', '8000/hour'),
+        'submission': os.environ.get('THROTTLE_SUBMISSION', '10/hour'),
+        'comment': os.environ.get('THROTTLE_COMMENT', '30/hour'),   # thread-flood protection
+        'vote': os.environ.get('THROTTLE_VOTE', '60/hour'),         # vote-toggle spam protection
+        'auth': os.environ.get('THROTTLE_AUTH', '10/min'),          # brute-force protection
+        'resend': os.environ.get('THROTTLE_RESEND', '3/hour'),      # email-bomb protection
     },
+    # Number of trusted reverse proxies in front of the app. Default 0 means
+    # the client IP is taken from REMOTE_ADDR and a spoofed X-Forwarded-For
+    # header is ignored for throttling. Set to the real proxy depth (e.g. 1
+    # behind nginx) in production so throttles can't be bypassed via XFF.
+    'NUM_PROXIES': int(os.environ.get('DJANGO_NUM_PROXIES', '0')),
 }
+
+# Terrain validation: when True, fall back to a (blocking) Overpass API call
+# for coordinates not covered by static water data. Off by default so the
+# submission path never makes a synchronous external request.
+TERRAIN_OVERPASS_ENABLED = os.environ.get(
+    'TERRAIN_OVERPASS_ENABLED', 'False'
+).lower() in ('true', '1', 'yes')
 
 # ── CORS ──────────────────────────────────────────────────────────
 CORS_ALLOWED_ORIGINS = os.environ.get(
@@ -136,8 +175,11 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
     'http://localhost:8000,http://127.0.0.1:8000,http://localhost:5173,http://localhost:5500'
 ).split(',')
 
+# 🌐 PRODUCTION: Add your frontend domain to CSRF_TRUSTED_ORIGINS.
+#   Example: 'https://comap.example.com'
 CORS_ALLOW_CREDENTIALS = True
 
+# 🌐 PRODUCTION: Same here — add frontend domain, e.g. 'https://comap.example.com'
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8000',
     'http://127.0.0.1:8000',
@@ -162,10 +204,31 @@ AUTHENTICATION_BACKENDS = [
 # ── django-allauth configuration ─────────────────────────────────
 ACCOUNT_LOGIN_METHODS = {'email'}
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
+# 🚧 PRODUCTION: Set ACCOUNT_EMAIL_VERIFICATION to 'mandatory' to require
+#   email confirmation before users can report. Keeps bots out.
 ACCOUNT_EMAIL_VERIFICATION = 'none'  # Skip email verification in dev
 ACCOUNT_SESSION_REMEMBER = True
-ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'http'
+# 🔒 PRODUCTION: Set ACCOUNT_DEFAULT_HTTP_PROTOCOL=https so allauth
+#   generates HTTPS links for redirects and emails.
+ACCOUNT_DEFAULT_HTTP_PROTOCOL = os.environ.get('ACCOUNT_DEFAULT_HTTP_PROTOCOL', 'http')
 
+# After a social login completes, allauth lands here. This view mints a DRF
+# token and bounces the user back to the SPA with ?token=… (see auth.py).
+LOGIN_REDIRECT_URL = '/api/auth/social-complete/'
+# Where the SPA lives (dev: Vite on :5173). The social-complete view redirects
+# here with the token appended. Override in prod to the deployed front-end URL.
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+# Let allauth start the provider flow on GET (so a plain <a href> works) and
+# skip its own intermediate confirmation pages.
+SOCIALACCOUNT_LOGIN_ON_GET = True
+
+# 🔑 PRODUCTION — Google OAuth setup:
+#   1. Go to https://console.cloud.google.com/apis/credentials
+#   2. Create OAuth 2.0 Client ID (Web application)
+#   3. Add redirect URI: https://yourdomain.com/accounts/google/login/callback/
+#   4. Save → copy Client ID and Client Secret
+#   5. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars on your server
+#   6. Go to OAuth consent screen → Publish (External) so tokens don't expire in 7 days
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
         'APP': {
@@ -178,6 +241,7 @@ SOCIALACCOUNT_PROVIDERS = {
     },
     'github': {
         'APP': {
+            # 🔑 PRODUCTION: Same pattern — GitHub OAuth app in Settings → Developer settings
             'client_id': os.environ.get('GITHUB_CLIENT_ID', ''),
             'secret': os.environ.get('GITHUB_CLIENT_SECRET', ''),
             'key': '',
@@ -185,6 +249,28 @@ SOCIALACCOUNT_PROVIDERS = {
         'SCOPE': ['user:email'],
     },
 }
+
+# ── Email (account verification) ──────────────────────────────────
+# Dev: print emails to the console (the verify link shows in the terminal).
+# Prod: set EMAIL_HOST/USER/PASSWORD env vars → real SMTP is used automatically.
+# 📧 PRODUCTION email setup options (pick one):
+#   A. Gmail SMTP — https://myaccount.google.com/apppasswords (generate app password)
+#      EMAIL_HOST=smtp.gmail.com  EMAIL_HOST_USER=you@gmail.com
+#   B. SendGrid/Mailgun — create API key in their dashboard, use as password
+#   C. Transactional service (Resend, Postmark) — follow their SMTP/docs
+if os.environ.get('EMAIL_HOST'):
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = os.environ['EMAIL_HOST']
+    EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
+    EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+    EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+    EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 'yes')
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+# 📧 PRODUCTION: Set to a real address like "Co-Map <noreply@yourdomain.com>"
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'Co-Map <no-reply@comap.local>')
+# How long an email-verification link stays valid (seconds). Default 3 days.
+EMAIL_VERIFICATION_MAX_AGE = int(os.environ.get('EMAIL_VERIFICATION_MAX_AGE', str(60 * 60 * 24 * 3)))
 
 # ── Internationalization ──────────────────────────────────────────
 LANGUAGE_CODE = 'en-us'
@@ -199,3 +285,16 @@ MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'mediafiles'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ── Production security ───────────────────────────────────────────
+# Applied only when DEBUG is off so local development stays on plain HTTP.
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 365  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    # Trust the X-Forwarded-Proto header from the reverse proxy (e.g. nginx).
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

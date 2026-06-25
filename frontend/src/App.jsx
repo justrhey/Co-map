@@ -1,69 +1,17 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { MapContainer, TileLayer, useMapEvents, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet.markercluster';
-import { fetchComplaints, fetchComplaint, createComplaint, updateComplaintStatus, fetchBarangayScores, fetchUserStats, fetchUserProfile, fetchAdminSummary, login, register, logout as apiLogout, fetchMe, setToken, isLoggedIn, toggleVote } from './api';
+import { fetchComplaints, fetchComplaint, createComplaint, updateComplaintStatus, fetchBarangayScores, fetchUserStats, fetchUserProfile, fetchAdminSummary, login, register, logout as apiLogout, fetchMe, setToken, isLoggedIn, fetchComments, postComment } from './api';
 import {
-  IconMapPin, IconClock, IconX,
+  IconClock,
   CATEGORIES, getCategoryIcon,
 } from './components/Icons';
-import BarangayLayer from './components/BarangayLayer';
-import CoolSpotsLayer from './components/CoolSpotsLayer';
+import MapView from './components/MapView';
+import DragManDock from './components/DragManDock';
 import AreaInfo from './components/AreaInfo';
 import AnalysisPanel from './components/AnalysisPanel';
 import SearchBar from './components/SearchBar';
-import GlassIcons from './components/GlassIcons';
 import HomePage from './components/HomePage';
 import LoginPage from './components/LoginPage';
 import './App.css';
-
-// ── Marker Icon Factory — stickpole + photo circle (Foodpanda-style) ─
-const _CAT_SVG = {
-  potholes:    `<circle cx="12" cy="12" r="5.5"/><path d="M4 12h2M18 12h2"/>`,
-  streetlight: `<path d="M12 5v15"/><path d="M8 8h8"/><circle cx="12" cy="5" r="3"/><path d="M5 5h2M17 5h2"/>`,
-  graffiti:    `<rect x="8" y="9" width="8" height="12" rx="2"/><path d="M12 9V6"/><path d="M16 12q3 2 3 5" stroke-width="1.3" fill="none"/>`,
-  illegal_dumping: `<path d="M5 13h14M7 13v7a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-7"/><path d="M9 9h6"/>`,
-  sidewalk:    `<circle cx="12" cy="5" r="2"/><path d="M12 7v5M8 12l4 5 4-5"/>`,
-  traffic:     `<rect x="9" y="3" width="6" height="18" rx="2"/><circle cx="12" cy="7" r="2" opacity="0.5" fill="#fff" stroke="none"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="17" r="2" opacity="0.5" fill="#fff" stroke="none"/>`,
-  noise:       `<path d="M6 10h3l4-4v12l-4-4H6z"/><path d="M15 9a4 4 0 0 1 0 6"/>`,
-  water:       `<path d="M12 2L4 14a8 8 0 0 0 16 0z"/>`,
-  park:        `<path d="M12 4L4 15h16z"/><path d="M12 15v5"/>`,
-  other:       `<circle cx="12" cy="12" r="10"/><path d="M12 9a3 3 0 1 1 0 5v1M12 17v.01"/>`,
-};
-
-function createMarkerIcon(status, category, id, photoUrl, zoom = 16) {
-  const colors = { pending: '#9ea6b2', approved: '#c0c6d0', resolved: '#8b949e' };
-  const color = colors[status] || '#8b949e';
-  const svg = _CAT_SVG[category] || _CAT_SVG.other;
-  const hasPhoto = Boolean(photoUrl);
-
-  const scale = Math.min(1.5, Math.max(0.75, 16 / (zoom || 16)));
-  const headSize = Math.round(32 * scale);
-  const stemHeight = Math.round(14 * scale);
-  const bannerSize = Math.round(9 * Math.min(1.2, scale));
-  const iconW = Math.round(headSize + 4);
-  const iconH = Math.round(headSize + stemHeight + 18);
-  const anchorX = Math.round(iconW / 2);
-  const anchorY = iconH - 2;
-  const svgSize = Math.round(18 * scale);
-
-  const headContent = hasPhoto
-    ? `<img src="${photoUrl}" class="marker-pole-img" />`
-    : `<svg class="marker-pole-icon" viewBox="0 0 24 24" width="${svgSize}" height="${svgSize}" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${svg}</svg>`;
-
-  return L.divIcon({
-    className: '',
-    html: `<div class="custom-marker marker-pole" style="--head-size:${headSize}px;--stem-height:${stemHeight}px;--banner-size:${bannerSize}px">
-      <div class="marker-pole-head${hasPhoto ? ' with-photo' : ''}" style="border-color:${color}">
-        ${headContent}
-      </div>
-      <div class="marker-pole-stem" style="background:${color}"></div>
-      <div class="marker-pole-banner">#${id}</div>
-    </div>`,
-    iconSize: [iconW, iconH],
-    iconAnchor: [anchorX, anchorY],
-  });
-}
 
 // ── SVG Badge Icons (no emoji) ────────────────────────────────
 const BADGE_ICONS = {
@@ -98,71 +46,6 @@ const BADGE_ICONS = {
     </svg>
   ),
 };
-
-// ── Map Content (handles clicks & clusters) ──────────────────────
-function MapContent({ complaints, onMapClick, onMarkerClick }) {
-  const clusterRef = useRef(null);
-  const lastZoomRef = useRef(16);
-  const [zoom, setZoom] = useState(16);
-  const map = useMapEvents({
-    click: (e) => {
-      if (e.originalEvent?.target?.closest?.('.leaflet-marker-icon, .leaflet-marker-pane > *')) return;
-      const { lat, lng } = e.latlng || {};
-      if (!isFinite(lat) || !isFinite(lng)) return;
-      if (!map._loaded) return;
-      onMapClick?.(e.latlng);
-    },
-    zoomend: () => {
-      const newZoom = map.getZoom();
-      if (Math.abs(newZoom - lastZoomRef.current) >= 1) {
-        lastZoomRef.current = newZoom;
-        setZoom(newZoom);
-      }
-    },
-  });
-
-  useEffect(() => {
-    if (!map) return;
-
-    const mcg = L.markerClusterGroup({
-      chunkedLoading: true,
-      disableClusteringAtZoom: 0,
-      spiderfyOnMaxZoom: true,
-      showCoverageOnHover: false,
-      iconCreateFunction: (cluster) => {
-        const count = cluster.getChildCount();
-        let size = 'small';
-        if (count > 10) size = 'medium';
-        if (count > 50) size = 'large';
-        return L.divIcon({
-          html: `<div class="cluster-icon cluster-${size}"><span>${count}</span></div>`,
-          className: 'cluster-wrapper',
-          iconSize: [42, 42],
-        });
-      },
-    });
-
-    const mapZoom = map.getZoom();
-
-    complaints.forEach((c) => {
-      const marker = L.marker([c.latitude, c.longitude], {
-        icon: createMarkerIcon(c.status, c.category, c.id, c.photo, mapZoom),
-      });
-      marker.bindTooltip(
-        `<div style="display:flex;align-items:center;gap:4px">${c.category_display}</div>`,
-        { direction: 'top', offset: [0, -20], className: 'marker-tooltip' }
-      );
-      marker.on('click', () => onMarkerClick?.(c.id));
-      mcg.addLayer(marker);
-    });
-
-    map.addLayer(mcg);
-    clusterRef.current = mcg;
-    return () => { if (clusterRef.current) map.removeLayer(clusterRef.current); };
-  }, [complaints, map, zoom, onMarkerClick]);
-
-  return null;
-}
 
 // ── Reverse geocode hook with caching ──────────────────────────
 const _addrCache = new Map();
@@ -203,46 +86,13 @@ function useAddress(latlng) {
     }, 400);
 
     return () => { if (timer.current) clearTimeout(timer.current); };
-  }, [latlng.lat, latlng.lng]);
+  }, [latlng?.lat, latlng?.lng]);
 
   return { address, loading };
 }
 
-// ── Tracks map center ────────────────────────────────────────────
-function MapCenterTracker({ onCenterChange }) {
-  const map = useMap();
-  const init = map.getCenter();
-  const lastRef = useRef(`${init.lat.toFixed(5)},${init.lng.toFixed(5)}`);
-
-  useEffect(() => {
-    const sync = () => {
-      const c = map.getCenter();
-      const key = `${c.lat.toFixed(5)},${c.lng.toFixed(5)}`;
-      if (lastRef.current === key) return;
-      lastRef.current = key;
-      onCenterChange({ lat: c.lat, lng: c.lng });
-    };
-    map.on('moveend', sync);
-    return () => map.off('moveend', sync);
-  }, [map, onCenterChange]);
-
-  return null;
-}
-
-// ── Locate Button ────────────────────────────────────────────────
-function LocateButton() {
-  const map = useMap();
-  return (
-    <div className="locate-btn" onClick={() => map.locate({ setView: true, maxZoom: 16 })}>
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
-      </svg>
-    </div>
-  );
-}
-
 // ── Filter Bar ──────────────────────────────────────────────────
-function FilterBar({ active, onChange, counts, total, error, onRetry }) {
+function FilterBar({ active, onChange, counts, total, error, onRetry, loaded }) {
   const FILTERS = [
     { value: 'all', label: 'All' },
     { value: 'potholes', label: 'Potholes' },
@@ -267,7 +117,7 @@ function FilterBar({ active, onChange, counts, total, error, onRetry }) {
         ))}
       </div>
       <div className={`filter-stats${error ? ' error' : ''}`}>
-        {error ? <><span>{error}</span><button className="retry-btn" onClick={onRetry}>Retry</button></> : (total > 0 ? `${total} report${total > 1 ? 's' : ''}` : 'Loading...')}
+        {error ? <><span>{error}</span><button className="retry-btn" onClick={onRetry}>Retry</button></> : (total > 0 ? `${total} report${total > 1 ? 's' : ''}` : (loaded ? 'No reports in this area yet' : 'Loading...'))}
       </div>
     </div>
   );
@@ -361,7 +211,14 @@ function LoginSheet({ open, onLogin, onClose }) {
                   onChange={(e) => setName(e.target.value)} maxLength={50} />
               </div>
             )}
-            {error && <p className="login-error">{error}</p>}
+            {error && (
+              <div className="form-error" role="alert">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <span>{error}</span>
+              </div>
+            )}
             <p className="login-hint">
               {mode === 'login'
                 ? 'Sign in to track your reports and earn recognition.'
@@ -388,17 +245,36 @@ function LoginSheet({ open, onLogin, onClose }) {
   );
 }
 
+// ── Score coloring: 0% → red, 50% → amber, 100% → green ────────
+// Returns a #rrggbb hex string so callers can append an alpha suffix (e.g.
+// `${col}88`) for a translucent variant.
+function scoreColor(pct) {
+  if (pct <= 0) return '#ef4444';
+  if (pct >= 100) return '#22c55e';
+  // red (#ef4444) → amber (#f59e0b) → green (#22c55e)
+  const r = pct < 50
+    ? Math.round(239 - (239 - 245) * (pct / 50))   // #ef → #f5
+    : Math.round(245 - (245 - 34) * ((pct - 50) / 50));  // #f5 → #22
+  const g = pct < 50
+    ? Math.round(68 - (68 - 158) * (pct / 50))     // #44 → #9e
+    : Math.round(158 - (158 - 197) * ((pct - 50) / 50)); // #9e → #c5
+  const b = pct < 50
+    ? Math.round(68 - (68 - 11) * (pct / 50))      // #44 → #0b
+    : Math.round(11 - (11 - 94) * ((pct - 50) / 50));  // #0b → #5e
+  const h = (n) => n.toString(16).padStart(2, '0');
+  return `#${h(r)}${h(g)}${h(b)}`;
+}
+
 // ── Score Circle Component ──────────────────────────────────────
 function ScoreCircle({ score }) {
   if (score == null) return null;
   const grade = score.letter_grade || 'F';
-  const color = grade === 'A' ? '#c0c6d0' : grade === 'B' ? '#9ea6b2' : grade === 'C' ? '#8b949e' : grade === 'D' ? '#6b7280' : '#484f58';
-  const pct = score.total;
+  const col = scoreColor(score.total);
 
   return (
-    <div className="score-circle" style={{ borderColor: color }}>
-      <span className="score-circle-grade" style={{ color }}>{grade}</span>
-      <span className="score-circle-pct">{pct}</span>
+    <div className="score-circle" style={{ borderColor: col }}>
+      <span className="score-circle-grade" style={{ color: col }}>{grade}</span>
+      <span className="score-circle-pct">{score.total}</span>
     </div>
   );
 }
@@ -411,7 +287,7 @@ const CAT_COLORS = {
 };
 
 function HotspotPanel({ analytics, healthScore, openCount, resolvedCount }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   if (!analytics || analytics.topAreas.length === 0) return null;
 
@@ -473,19 +349,6 @@ function HotspotPanel({ analytics, healthScore, openCount, resolvedCount }) {
   );
 }
 
-// ── Glass icon color mapping per category ──────────────────────
-const CATEGORY_GLASS_COLORS = {
-  potholes: 'orange',
-  streetlight: 'cyan',
-  graffiti: 'pink',
-  illegal_dumping: 'red',
-  sidewalk: 'green',
-  traffic: 'yellow',
-  noise: 'purple',
-  water: 'blue',
-  other: 'indigo',
-};
-
 // ── Submit Sheet (multi-media) ──────────────────────────────────
 function SubmitSheet({ open, latlng, onClose, onSubmit, onLoginRequired, setToast }) {
   const [category, setCategory] = useState('potholes');
@@ -497,12 +360,15 @@ function SubmitSheet({ open, latlng, onClose, onSubmit, onLoginRequired, setToas
   const [photoPreview, setPhotoPreview] = useState(null);
   const [additionalMedia, setAdditionalMedia] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [discussionEnabled, setDiscussionEnabled] = useState(true);
 
   useEffect(() => {
     if (open) {
       setCategory('potholes'); setSituation(''); setImpact('');
       setActionRequested(''); setCustomTitle('');
       setPhoto(null); setPhotoPreview(null); setAdditionalMedia([]);
+      setSubmitError(''); setDiscussionEnabled(true);
     }
   }, [open]);
 
@@ -533,6 +399,7 @@ function SubmitSheet({ open, latlng, onClose, onSubmit, onLoginRequired, setToas
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!latlng) return;
+    setSubmitError('');
     setSubmitting(true);
     try {
       const payload = {
@@ -544,6 +411,7 @@ function SubmitSheet({ open, latlng, onClose, onSubmit, onLoginRequired, setToas
         action_requested: actionRequested.trim(),
         custom_category: category === 'other' ? customTitle.trim() : '',
         photo,
+        discussion_enabled: discussionEnabled,
       };
       if (additionalMedia.length > 0) {
         payload.additional_media = additionalMedia;
@@ -552,11 +420,13 @@ function SubmitSheet({ open, latlng, onClose, onSubmit, onLoginRequired, setToas
       onSubmit();
       onClose();
     } catch (err) {
-      if (err.message && err.message.toLowerCase().includes('sign in')) {
-        // Not logged in — show login sheet instead of raw error
+      if (err.kind === 'auth') {
+        // Not (or no longer) logged in — send them to sign in, keep their draft.
         if (onLoginRequired) onLoginRequired();
         else onClose();
       } else {
+        // Show it in-context so the draft stays visible, plus a toast.
+        setSubmitError(err.message);
         if (setToast) setToast({ message: err.message, type: 'error' });
       }
     } finally {
@@ -581,17 +451,21 @@ function SubmitSheet({ open, latlng, onClose, onSubmit, onLoginRequired, setToas
         </div>
         <div className="sheet-content">
           <form onSubmit={handleSubmit}>
+            <div className="submit-form-body">
             <div className="field-group">
               <label>Category</label>
-              <GlassIcons
-                items={CATEGORIES.map(({ value, label, Icon }) => ({
-                  icon: <Icon width={22} height={22} />,
-                  color: CATEGORY_GLASS_COLORS[value],
-                  label,
-                }))}
-                activeIndex={CATEGORIES.findIndex(c => c.value === category)}
-                onItemClick={(index) => setCategory(CATEGORIES[index].value)}
-              />
+              <div className="cat-pills">
+                {CATEGORIES.map(({ value, label }) => (
+                  <button
+                    type="button"
+                    key={value}
+                    className={`cat-pill${category === value ? ' active' : ''}`}
+                    onClick={() => setCategory(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {category === 'other' && (
@@ -685,6 +559,27 @@ function SubmitSheet({ open, latlng, onClose, onSubmit, onLoginRequired, setToas
                 <textarea id="action" rows={1} placeholder="What should be done?" maxLength={300} value={actionRequested} onChange={(e) => setActionRequested(e.target.value)} />
               </div>
             </div>
+
+            <label className="discussion-toggle">
+              <input type="checkbox" checked={discussionEnabled} onChange={(e) => setDiscussionEnabled(e.target.checked)} />
+              <span className="discussion-toggle-box" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+              <span className="discussion-toggle-text">
+                <span className="discussion-toggle-title">Allow neighbors to discuss</span>
+                <span className="discussion-toggle-sub">Let others comment and confirm they're affected too</span>
+              </span>
+            </label>
+
+            {submitError && (
+              <div className="form-error" role="alert">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <span>{submitError}</span>
+              </div>
+            )}
+            </div>{/* /submit-form-body */}
             <div className="sheet-actions">
               <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
               <button type="submit" className="btn btn-primary" disabled={canSubmit}>
@@ -698,47 +593,239 @@ function SubmitSheet({ open, latlng, onClose, onSubmit, onLoginRequired, setToas
   );
 }
 
+// ── Discussion thread ──────────────────────────────────────────
+function timeAgo(iso) {
+  const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+function CommentItem({ c, isReply, onReply }) {
+  return (
+    <div className={`comment${isReply ? ' comment-reply' : ''}${c.is_reporter ? ' is-reporter' : ''}`}>
+      <div className="comment-meta">
+        <span className="comment-author">{c.user?.name || 'Neighbor'}</span>
+        {c.is_reporter && <span className="comment-badge">Reporter</span>}
+        <span className="comment-time">{timeAgo(c.created_at)}</span>
+      </div>
+      <p className="comment-body">{c.body}</p>
+      {!isReply && isLoggedIn() && (
+        <button className="comment-reply-btn" onClick={() => onReply(c)}>
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+          Reply
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CommentThread({ complaintId, enabled, fullHeight = false }) {
+  const [comments, setComments] = useState([]);
+  const [body, setBody] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [posting, setPosting] = useState(false);
+  const [error, setError] = useState('');
+  const [replyTo, setReplyTo] = useState(null); // parent comment being replied to
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    fetchComments(complaintId)
+      .then(data => { if (active) setComments(Array.isArray(data) ? data : []); })
+      .catch(() => { if (active) setComments([]); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [complaintId]);
+
+  const startReply = (c) => { setReplyTo(c); inputRef.current?.focus(); };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    const text = body.trim();
+    if (!text || posting) return;
+    if (!isLoggedIn()) { setError('Sign in to join the discussion.'); return; }
+    setPosting(true);
+    setError('');
+    try {
+      const created = await postComment(complaintId, text, replyTo?.id || null);
+      if (replyTo) {
+        // Nest the reply under its parent.
+        setComments(prev => prev.map(p =>
+          p.id === replyTo.id ? { ...p, replies: [...(p.replies || []), created] } : p));
+      } else {
+        setComments(prev => [...prev, created]);
+      }
+      setBody('');
+      setReplyTo(null);
+    } catch (err) {
+      setError(err.message || 'Could not post comment.');
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  if (!enabled) return null;
+
+  const totalCount = comments.reduce((n, c) => n + 1 + (c.replies?.length || 0), 0);
+
+  return (
+    <div className={`discussion${fullHeight ? ' discussion-full' : ''}`}>
+      {!fullHeight && (
+        <div className="discussion-head">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span>Discussion{totalCount ? ` · ${totalCount}` : ''}</span>
+        </div>
+      )}
+
+      <div className="discussion-list">
+        {loading ? (
+          <div className="discussion-empty">Loading…</div>
+        ) : comments.length === 0 ? (
+          <div className="discussion-empty">No comments yet. Be the first to add context.</div>
+        ) : comments.map(c => (
+          <div className="comment-group" key={c.id}>
+            <CommentItem c={c} onReply={startReply} />
+            {c.replies?.length > 0 && (
+              <div className="comment-replies">
+                {c.replies.map(r => <CommentItem key={r.id} c={r} isReply onReply={startReply} />)}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {isLoggedIn() ? (
+        <form className="comment-form-wrap" onSubmit={submit}>
+          {replyTo && (
+            <div className="reply-indicator">
+              <span>Replying to <strong>{replyTo.user?.name || 'Neighbor'}</strong></span>
+              <button type="button" onClick={() => setReplyTo(null)} aria-label="Cancel reply">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+          )}
+          <div className="comment-form">
+            <input
+              ref={inputRef}
+              type="text"
+              className="comment-input"
+              placeholder={replyTo ? 'Write a reply…' : 'Add a comment…'}
+              value={body}
+              maxLength={1000}
+              onChange={(e) => setBody(e.target.value)}
+            />
+            <button type="submit" className="comment-send" disabled={posting || !body.trim()} aria-label="Send">
+              {posting ? <span className="spinner" /> : (
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              )}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="discussion-empty">Sign in to join the discussion.</div>
+      )}
+      {error && <p className="comment-error">{error}</p>}
+    </div>
+  );
+}
+
 // ── Detail Sheet (with score) ──────────────────────────────────
+// ── Media carousel — one frame at a time, switch like a carousel ──
+// Merges the primary photo + any additional media into a single slot so the
+// modal never grows tall with stacked images. Arrows + dots + swipe to switch.
+function MediaCarousel({ photo, media }) {
+  const items = [
+    ...(photo ? [{ type: 'image', url: photo }] : []),
+    ...((media || []).map(m => ({ type: m.media_type || 'image', url: m.file, id: m.id }))),
+  ];
+  const [i, setI] = useState(0);
+  const touchX = useRef(null);
+
+  if (!items.length) return null;
+  const n = items.length;
+  const idx = Math.min(i, n - 1);
+  const cur = items[idx];
+  const go = (d) => setI((p) => (((p + d) % n) + n) % n);
+
+  const onTouchStart = (e) => { touchX.current = e.touches[0].clientX; };
+  const onTouchEnd = (e) => {
+    if (touchX.current == null) return;
+    const dx = e.changedTouches[0].clientX - touchX.current;
+    if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1);
+    touchX.current = null;
+  };
+
+  return (
+    <div className="detail-carousel">
+      <div
+        className="detail-carousel-stage"
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        onClick={() => window.open(cur.url, '_blank')}
+      >
+        {cur.type === 'video' ? (
+          <video src={cur.url} className="detail-carousel-media" controls onClick={(e) => e.stopPropagation()} />
+        ) : cur.type === 'audio' ? (
+          <div className="detail-carousel-audio" onClick={(e) => e.stopPropagation()}>
+            <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            <audio src={cur.url} controls />
+          </div>
+        ) : (
+          <img src={cur.url} alt={`Media ${idx + 1}`} className="detail-carousel-media" />
+        )}
+
+        {n > 1 && (
+          <>
+            <button className="carousel-arrow prev" onClick={(e) => { e.stopPropagation(); go(-1); }} aria-label="Previous">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button className="carousel-arrow next" onClick={(e) => { e.stopPropagation(); go(1); }} aria-label="Next">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+            <span className="carousel-count">{idx + 1} / {n}</span>
+          </>
+        )}
+      </div>
+      {n > 1 && (
+        <div className="carousel-dots">
+          {items.map((_, k) => (
+            <button
+              key={k}
+              className={`carousel-dot${k === idx ? ' active' : ''}`}
+              onClick={() => setI(k)}
+              aria-label={`Go to media ${k + 1}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DetailSheet({ open, complaintId, onClose }) {
   const [complaint, setComplaint] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [voteCount, setVoteCount] = useState(0);
-  const [userVoted, setUserVoted] = useState(false);
-  const [voteLoading, setVoteLoading] = useState(false);
+  const [discussionOpen, setDiscussionOpen] = useState(false);
+  const latlng = complaint ? { lat: complaint.latitude, lng: complaint.longitude } : null;
+  const { address, loading: addrLoading } = useAddress(latlng);
+
+  // Close the side discussion whenever the sheet closes or the report changes.
+  useEffect(() => { setDiscussionOpen(false); }, [open, complaintId]);
 
   useEffect(() => {
     if (!open || !complaintId) { setComplaint(null); return; }
     setLoading(true);
-    fetchComplaint(complaintId).then(data => {
-      setComplaint(data);
-      setVoteCount(data.vote_count ?? 0);
-      setUserVoted(data.user_vote ?? false);
-    }).catch(() => setComplaint(null)).finally(() => setLoading(false));
+    fetchComplaint(complaintId)
+      .then(setComplaint)
+      .catch(() => setComplaint(null))
+      .finally(() => setLoading(false));
   }, [open, complaintId]);
 
-  const handleVote = async () => {
-    if (!isLoggedIn() || voteLoading) return;
-    setVoteLoading(true);
-    const prevVoted = userVoted;
-    const prevCount = voteCount;
-    // Optimistic update
-    setUserVoted(v => !v);
-    setVoteCount(c => prevVoted ? c - 1 : c + 1);
-    try {
-      const result = await toggleVote(complaintId);
-      setVoteCount(result.vote_count);
-      setUserVoted(result.voted);
-    } catch {
-      // Revert on error
-      setUserVoted(prevVoted);
-      setVoteCount(prevCount);
-    } finally {
-      setVoteLoading(false);
-    }
-  };
-
   return (
-    <div className={`sheet-overlay${open ? ' open' : ''}`}>
+    <div className={`sheet-overlay${open ? ' open' : ''}${discussionOpen ? ' discussion-active' : ''}`}>
       <div className="sheet-backdrop" onClick={onClose} />
       <div className="sheet detail-sheet" role="dialog" aria-label="Report details">
         <div className="sheet-grip" />
@@ -754,22 +841,11 @@ function DetailSheet({ open, complaintId, onClose }) {
                 </div>
                 {complaint.score && <ScoreCircle score={complaint.score} />}
               </div>
-              <div className="detail-vote-row">
-                <button
-                  className={`vote-btn${userVoted ? ' voted' : ''}`}
-                  onClick={handleVote}
-                  disabled={voteLoading || !isLoggedIn()}
-                  title={isLoggedIn() ? (userVoted ? 'Remove upvote' : 'Upvote this report') : 'Sign in to vote'}
-                >
-                  <svg viewBox="0 0 24 24" width="18" height="18"
-                    fill={userVoted ? 'currentColor' : 'none'}
-                    stroke="currentColor" strokeWidth="2"
-                    strokeLinecap="round" strokeLinejoin="round"
-                  >
-                    <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
-                  </svg>
-                  <span className="vote-count">{voteCount}</span>
-                </button>
+              <div className="detail-address-row">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="detail-address-icon">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                </svg>
+                <span className="detail-address-text">{addrLoading ? 'Locating…' : address}</span>
               </div>
               {complaint.status && (
                 <div className="detail-timeline">
@@ -804,71 +880,32 @@ function DetailSheet({ open, complaintId, onClose }) {
 
               {complaint.score && (
                 <div className="score-breakdown">
-                  <div className="sc-breakdown">
-                    <div className="sc-bar">
-                      <div className="sc-bar-fill specificity" style={{ width: `${(complaint.score.specificity / 25) * 100}%` }} />
-                    </div>
-                    <span className="sc-label">Structure</span>
-                    <span className="sc-val">{complaint.score.specificity}/25</span>
-                  </div>
-                  <div className="sc-breakdown">
-                    <div className="sc-bar">
-                      <div className="sc-bar-fill context" style={{ width: `${(complaint.score.context / 30) * 100}%` }} />
-                    </div>
-                    <span className="sc-label">Detail</span>
-                    <span className="sc-val">{complaint.score.context}/30</span>
-                  </div>
-                  <div className="sc-breakdown">
-                    <div className="sc-bar">
-                      <div className="sc-bar-fill clarity" style={{ width: `${(complaint.score.clarity / 20) * 100}%` }} />
-                    </div>
-                    <span className="sc-label">Coherence</span>
-                    <span className="sc-val">{complaint.score.clarity}/20</span>
-                  </div>
-                  <div className="sc-breakdown">
-                    <div className="sc-bar">
-                      <div className="sc-bar-fill completeness" style={{ width: `${(complaint.score.completeness / 15) * 100}%` }} />
-                    </div>
-                    <span className="sc-label">Completeness</span>
-                    <span className="sc-val">{complaint.score.completeness}/15</span>
-                  </div>
-                  <div className="sc-breakdown">
-                    <div className="sc-bar">
-                      <div className="sc-bar-fill actionability" style={{ width: `${(complaint.score.actionability / 10) * 100}%` }} />
-                    </div>
-                    <span className="sc-label">Actionability</span>
-                    <span className="sc-val">{complaint.score.actionability}/10</span>
-                  </div>
+                  {[
+                    { key: 'specificity', label: 'Structure', val: complaint.score.specificity, max: 25 },
+                    { key: 'context', label: 'Detail', val: complaint.score.context, max: 30 },
+                    { key: 'clarity', label: 'Coherence', val: complaint.score.clarity, max: 20 },
+                    { key: 'completeness', label: 'Completeness', val: complaint.score.completeness, max: 15 },
+                    { key: 'actionability', label: 'Actionability', val: complaint.score.actionability, max: 10 },
+                  ].map(({ key, label, val, max }) => {
+                    const pct = Math.round((val / max) * 100);
+                    const col = scoreColor(pct);
+                    return (
+                      <div className="sc-breakdown" key={key}>
+                        <div className="sc-bar">
+                          <div className="sc-bar-fill" style={{ width: `${pct}%`, background: col }} />
+                        </div>
+                        <span className="sc-label">{label}</span>
+                        <span className="sc-val" style={{ color: col }}>{val}/{max}</span>
+                      </div>
+                    );
+                  })}
                   {complaint.score.description_detail && (
                     <div className="sc-note">{complaint.score.description_detail}</div>
                   )}
                 </div>
               )}
 
-              {(complaint.photo || complaint.media?.length > 0) && (
-                <div className="detail-media-grid">
-                  {complaint.photo && (
-                    <div className="detail-media-item" onClick={() => window.open(complaint.photo, '_blank')}>
-                      <img src={complaint.photo} alt="Complaint photo" className="detail-photo-thumb" />
-                    </div>
-                  )}
-                  {complaint.media?.map(m => (
-                    <div key={m.id} className="detail-media-item">
-                      {m.media_type === 'video' ? (
-                        <div className="detail-media-play" onClick={() => window.open(m.file, '_blank')}>
-                          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                        </div>
-                      ) : m.media_type === 'audio' ? (
-                        <div className="detail-media-play" onClick={() => window.open(m.file, '_blank')}>
-                          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-                        </div>
-                      ) : (
-                        <img src={m.file} alt="Additional" className="detail-photo-thumb" onClick={() => window.open(m.file, '_blank')} />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+              <MediaCarousel photo={complaint.photo} media={complaint.media} />
 
               <div className="detail-template">
                 <div className="detail-field">
@@ -888,9 +925,13 @@ function DetailSheet({ open, complaintId, onClose }) {
                   </div>
                 )}
               </div>
-              <div className="detail-meta">
-                {complaint.latitude.toFixed(5)}, {complaint.longitude.toFixed(5)}
-              </div>
+              {complaint.discussion_enabled && (
+                <button className="discussion-open-btn" onClick={() => setDiscussionOpen(true)}>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  <span>Discussion{complaint.comment_count ? ` · ${complaint.comment_count}` : ''}</span>
+                  <svg className="discussion-open-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              )}
               <div className="detail-close-bar">
                 <button className="btn btn-ghost" style={{ width: '100%' }} onClick={onClose}>Close</button>
               </div>
@@ -900,6 +941,34 @@ function DetailSheet({ open, complaintId, onClose }) {
           )}
         </div>
       </div>
+
+      {/* Discussion as a separate panel beside the report detail */}
+      {complaint && complaint.discussion_enabled && (
+        <DiscussionPanel
+          open={discussionOpen}
+          complaintId={complaint.id}
+          title={complaint.category_display}
+          onClose={() => setDiscussionOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Discussion Panel (slides in beside the report detail) ───────
+function DiscussionPanel({ open, complaintId, title, onClose }) {
+  return (
+    <div className={`discussion-panel${open ? ' open' : ''}`} role="dialog" aria-label="Discussion">
+      <div className="discussion-panel-header">
+        <button className="discussion-panel-back" onClick={onClose} aria-label="Back to report">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        </button>
+        <div className="discussion-panel-title">
+          <span className="discussion-panel-kicker">Discussion</span>
+          <span className="discussion-panel-sub">{title}</span>
+        </div>
+      </div>
+      {open && <CommentThread complaintId={complaintId} enabled fullHeight />}
     </div>
   );
 }
@@ -960,6 +1029,22 @@ function ProfileSheet({ open, onClose }) {
                   </span>
                 </div>
               </div>
+
+              {profile.credibility && (
+                <div className="profile-cred-card">
+                  <div className="profile-cred-grade" style={{ color: gradeColor(profile.credibility.grade), borderColor: gradeColor(profile.credibility.grade) }}>
+                    {profile.credibility.grade || '-'}
+                  </div>
+                  <div className="profile-cred-body">
+                    <span className="profile-cred-label">{profile.credibility.label}</span>
+                    <span className="profile-cred-sub">
+                      {profile.credibility.count > 0
+                        ? `Credibility ${profile.credibility.score}/100 · based on ${profile.credibility.count} report${profile.credibility.count > 1 ? 's' : ''}`
+                        : 'File quality reports to build your credibility'}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               <div className="profile-summary">
                 <div className="profile-stats">
@@ -1204,12 +1289,23 @@ function Toast({ message, type }) {
   return <div className={`toast${type === 'error' ? ' error' : ''}`}>{message}</div>;
 }
 
-// ── Captures map instance ──────────────────────────────────────
-function MapRefCapture({ onMap }) {
-  const map = useMap();
-  useEffect(() => { onMap(map); }, [map, onMap]);
-  return null;
+// ── Confirm dialog — a small cautious "are you sure?" prompt ─────
+function ConfirmDialog({ open, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger = false, onConfirm, onCancel }) {
+  if (!open) return null;
+  return (
+    <div className="confirm-overlay" onClick={onCancel}>
+      <div className="confirm-dialog" role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <h3 className="confirm-title">{title}</h3>
+        {message && <p className="confirm-message">{message}</p>}
+        <div className="confirm-actions">
+          <button className="btn btn-ghost" onClick={onCancel}>{cancelLabel}</button>
+          <button className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
 }
+
 
 // ── Main App ─────────────────────────────────────────────────────
 export default function App() {
@@ -1217,6 +1313,7 @@ export default function App() {
   const [counts, setCounts] = useState({});
   const [activeFilter, setActiveFilter] = useState('all');
   const [centerLatLng, setCenterLatLng] = useState({ lat: 14.565, lng: 121.035 });
+  const [reportPin, setReportPin] = useState(null); // where the man was dropped
   const [submitOpen, setSubmitOpen] = useState(false);
   const [submitLatLng, setSubmitLatLng] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -1230,17 +1327,46 @@ export default function App() {
   const [page, setPage] = useState('home');
   const [mapInstance, setMapInstance] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [showCoolSpots, setShowCoolSpots] = useState(false);
   const [showAreaInfo, setShowAreaInfo] = useState(false);
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const lastFetchCenter = useRef(null);
+  const chromeRef = useRef(null);
+
+  // Publish the real height of the top chrome so floating panels clear it
+  // automatically — no hardcoded offsets, so nothing can overlap.
+  useEffect(() => {
+    const el = chromeRef.current;
+    if (!el) return;
+    const update = () => document.documentElement.style.setProperty('--chrome-h', `${el.offsetHeight}px`);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [page, user, userStats]);
+
+  // Capture a token handed back by the social-login bridge (?token=…), store
+  // it, then strip it from the URL before the normal auth bootstrap runs.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token) {
+      setToken(token);
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('auth_error')) {
+      setToast({ message: 'Social sign-in failed. Please try again.', type: 'error' });
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   // Load user from token on mount
   useEffect(() => {
     if (isLoggedIn()) {
       fetchMe().then(data => {
-        if (data) setUser(data.user);
+        if (data) { setUser(data.user); setPage('map'); }
         setAuthLoaded(true);
       }).catch(() => {
         setToken(null);
@@ -1257,6 +1383,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    setConfirmSignOut(false);
     await apiLogout();
     setUser(null);
     setUserStats(null);
@@ -1269,20 +1396,23 @@ export default function App() {
       if (spatial) Object.assign(params, spatial);
       const data = await fetchComplaints(params);
       setComplaints(data.results || []);
+      setDataLoaded(true);
     } catch (err) {
       console.error(err);
-      setLoadError('Could not load complaints. Check connection.');
+      // ApiError messages are already user-facing and offline-aware.
+      setLoadError(err.message || 'Could not load reports. Please try again.');
     }
   }, [activeFilter]);
 
-  useEffect(() => { loadData(); lastFetchCenter.current = null; }, [loadData]);
-
+  // One fetch path: (re)load when the filter changes or the map center moves to
+  // a new ~1km cell. The key includes the filter so changing it busts the dedup,
+  // and the coarse cell (2 decimals ≈ 1.1km) stops panning from hammering the API.
   useEffect(() => {
-    const key = `${centerLatLng.lat.toFixed(3)},${centerLatLng.lng.toFixed(3)}`;
+    const key = `${activeFilter}|${centerLatLng.lat.toFixed(2)},${centerLatLng.lng.toFixed(2)}`;
     if (lastFetchCenter.current === key) return;
     lastFetchCenter.current = key;
     loadData({ lat: centerLatLng.lat, lng: centerLatLng.lng, radius: 10 });
-  }, [centerLatLng.lat, centerLatLng.lng, loadData]);
+  }, [centerLatLng.lat, centerLatLng.lng, loadData, activeFilter]);
 
   useEffect(() => {
     const c = { all: complaints.length };
@@ -1365,9 +1495,12 @@ function findBarangay(lat, lng, geojson) {
     fetchUserStats().then(setUserStats).catch(() => {});
   }, [user]);
 
+  // Barangay scores are slow-moving aggregates — fetch once on mount, not on
+  // every complaints update (which fired on every map pan). They're refreshed
+  // after a submit via the submitOpen effect below.
   useEffect(() => {
     fetchBarangayScores().then(setHealthData).catch(() => {});
-  }, [complaints]);
+  }, []);
 
   useEffect(() => {
     if (!submitOpen) {
@@ -1377,15 +1510,29 @@ function findBarangay(lat, lng, geojson) {
   }, [submitOpen]);
 
   // ── Handlers ──
-  const handleMapClick = useCallback((latlng) => {}, []);
 
   const handleMarkerClick = useCallback((id) => {
+    // Anyone can see pins, but details require signing in.
+    if (!isLoggedIn()) {
+      setToast({ message: 'Sign in to view report details', type: 'error' });
+      return;
+    }
     setDetailId(id);
     setDetailOpen(true);
   }, []);
 
   const handleReport = () => {
-    setSubmitLatLng(centerLatLng);
+    if (!reportPin) return;
+    setSubmitLatLng(reportPin);
+    setSubmitOpen(true);
+  };
+
+  // FAB: one-tap report at the current map center (no dragging needed).
+  const handleFabReport = () => {
+    if (!isLoggedIn()) { setPage('login'); return; }
+    const pin = { lat: centerLatLng.lat, lng: centerLatLng.lng };
+    setReportPin(pin);
+    setSubmitLatLng(pin);
     setSubmitOpen(true);
   };
 
@@ -1416,41 +1563,53 @@ function findBarangay(lat, lng, geojson) {
 
       {page === 'map' && (
         <>
+      {/* Top chrome — top bar + filters + toggles stacked so they can never overlap */}
+      <div className="top-chrome" ref={chromeRef}>
       {/* Top Bar */}
       <header className="top-bar">
         <div className="top-bar-inner">
           <h1 className="app-title" onClick={() => setPage('home')} style={{ cursor: 'pointer' }}>
-            <IconMapPin width={20} height={20} /> Co-Map
+            <img src="/logo_com.jpeg" alt="" className="brand-logo" /> Co-Map
           </h1>
           {mapInstance && <SearchBar map={mapInstance} />}
           {user ? (
-            <div className="user-badge" onClick={openProfile} style={{ cursor: 'pointer' }}>
-              <span className="user-name">{user.name || user.email?.split('@')[0]}</span>
-              {userStats && userStats.total_reports > 0 && (
-                <span className="user-reports">{userStats.total_reports} report{userStats.total_reports > 1 ? 's' : ''}</span>
-              )}
+            <div className="user-badge">
               {userStats?.level && (
-                <span className="user-level-badge" title={`Level ${userStats.level.level} · ${userStats.total_xp} XP`}>Lv{userStats.level.level}</span>
+                <span className="user-level-chip" title={`Level ${userStats.level.level} · ${userStats.total_xp} XP`}>
+                  <span className="user-level-num">{userStats.level.level}</span>
+                  <span className="user-level-word">LVL</span>
+                </span>
               )}
+              <button className="user-identity" onClick={openProfile} title="View your profile">
+                <span className="user-name">{user.name || user.email?.split('@')[0]}</span>
+                {userStats && userStats.total_reports > 0 && (
+                  <span className="user-reports">{userStats.total_reports} report{userStats.total_reports > 1 ? 's' : ''}</span>
+                )}
+              </button>
               {userStats && userStats.streak >= 1 && (
-                <span className="user-streak">
+                <span className="user-streak" title={`${userStats.streak}-day reporting streak`}>
                   <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
                   {userStats.streak}d
                 </span>
               )}
               {user?.is_staff && (
-                <button className="user-btn admin-btn" onClick={(e) => { e.stopPropagation(); setAdminOpen(true); }}>Admin</button>
+                <button className="user-btn admin-btn" onClick={() => setAdminOpen(true)}>Admin</button>
               )}
-              <button className="user-btn" onClick={(e) => { e.stopPropagation(); handleLogout(); }}>Sign Out</button>
+              <button className="user-btn" onClick={() => setConfirmSignOut(true)}>Sign Out</button>
             </div>
           ) : (
-            <button className="user-btn sign-in" onClick={() => setPage('login')}>Sign In</button>
+            <button className="user-btn sign-in" onClick={() => setPage('login')}>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/>
+              </svg>
+              Sign In
+            </button>
           )}
         </div>
         {userStats && userStats.badges && userStats.badges.length > 0 && (
           <div className="badges-bar">
             {userStats.badges.map(b => (
-              <div key={b.id} className="badge-item" title={`${b.title} — ${b.subtitle}`}>
+              <div key={b.id} className="badge-item" title={`${b.title} - ${b.subtitle}`}>
                 <span className="badge-icon">
                   {BADGE_ICONS[b.id]}
                 </span>
@@ -1461,7 +1620,7 @@ function findBarangay(lat, lng, geojson) {
         )}
       </header>
 
-      <FilterBar active={activeFilter} onChange={setActiveFilter} counts={counts} total={complaints.length} error={loadError} onRetry={() => loadData()} />
+      <FilterBar active={activeFilter} onChange={setActiveFilter} counts={counts} total={complaints.length} error={loadError} onRetry={() => loadData()} loaded={dataLoaded} />
 
       <div className="map-toggles">
         <button
@@ -1486,44 +1645,37 @@ function findBarangay(lat, lng, geojson) {
           Analysis
         </button>
       </div>
+      </div>{/* /top-chrome */}
 
       <HotspotPanel analytics={analytics} healthScore={healthData?.overall?.score ?? null} openCount={healthData?.overall?.open ?? 0} resolvedCount={healthData?.overall?.resolved ?? 0} />
 
-      {/* Map */}
-      <MapContainer
-        center={[14.565, 121.035]}
-        zoom={16}
-        minZoom={10}
-        maxZoom={18}
-        className="map-container"
-        zoomControl={true}
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-          maxZoom={18}
-        />
-        <BarangayLayer />
-        <CoolSpotsLayer visible={showCoolSpots} />
-        <AreaInfo visible={showAreaInfo} />
-        <MapRefCapture onMap={setMapInstance} />
-        <MapContent complaints={complaints} onMapClick={handleMapClick} onMarkerClick={handleMarkerClick} />
-        <MapCenterTracker onCenterChange={setCenterLatLng} />
-        <LocateButton />
-      </MapContainer>
+      {/* Map (MapLibre GL — 3D capable) */}
+      <MapView
+        complaints={complaints}
+        showCoolSpots={showCoolSpots}
+        onMarkerClick={handleMarkerClick}
+        onCenterChange={setCenterLatLng}
+        onMapReady={setMapInstance}
+        reportPin={reportPin}
+      />
+      <AreaInfo visible={showAreaInfo} center={centerLatLng} />
 
-      {/* Center pin overlay */}
-      <div className="center-pin">
-        <div className="center-pulse" />
-        <svg className="center-pin-svg" viewBox="0 0 28 40" width="28" height="40" fill="none">
-          <path d="M14 39C14 39 2 26 2 14 2 7.5 7.5 2 14 2s12 5.5 12 12c0 12-12 25-12 25z" fill="#333"/>
-          <circle cx="14" cy="14" r="5" fill="#fff"/>
-        </svg>
-      </div>
+      {/* Corner-docked man — drag him onto the map to drop a report pin. */}
+      {mapInstance && <DragManDock map={mapInstance} onPlace={setReportPin} />}
 
       {/* Bottom card — only for logged-in users */}
-      {isLoggedIn() && !submitOpen && (
-        <BottomCard latlng={centerLatLng} onReport={handleReport} />
+      {isLoggedIn() && !submitOpen && reportPin && (
+        <BottomCard latlng={reportPin} onReport={handleReport} />
+      )}
+
+      {/* Floating action button — always-reachable one-tap report at map center */}
+      {!submitOpen && !detailOpen && !profileOpen && (
+        <button className="report-fab" onClick={handleFabReport} aria-label="Report an issue here">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          <span className="report-fab-label">Report</span>
+        </button>
       )}
 
       <SubmitSheet open={submitOpen} latlng={submitLatLng} onClose={handleSubmitClose} onSubmit={handleSubmitSuccess} onLoginRequired={() => setPage('login')} setToast={setToast} />
@@ -1531,6 +1683,16 @@ function findBarangay(lat, lng, geojson) {
       <ProfileSheet open={profileOpen} onClose={() => setProfileOpen(false)} />
       <AdminSheet open={adminOpen} onClose={() => setAdminOpen(false)} onStatusChange={() => loadData()} setToast={setToast} />
       <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} />
+      <ConfirmDialog
+        open={confirmSignOut}
+        title="Sign out?"
+        message="Do you want to sign out? You'll need to sign in again to submit or track reports."
+        confirmLabel="Sign Out"
+        cancelLabel="Stay signed in"
+        danger
+        onConfirm={handleLogout}
+        onCancel={() => setConfirmSignOut(false)}
+      />
       <Toast message={toast?.message} type={toast?.type} />
         </>
       )}

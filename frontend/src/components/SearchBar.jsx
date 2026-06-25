@@ -37,7 +37,7 @@ export default function SearchBar({ map }) {
   const selectResult = (result) => {
     const lat = parseFloat(result.lat);
     const lng = parseFloat(result.lon);
-    map.flyTo([lat, lng], 17, { duration: 1 });
+    map.flyTo({ center: [lng, lat], zoom: 17, duration: 1000 });
     setQuery(result.display_name.split(',')[0]);
     setOpen(false);
     inputRef.current?.blur();

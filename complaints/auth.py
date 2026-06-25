@@ -2,23 +2,65 @@
 Authentication views — SSO, email/password, and profile management.
 Uses django-allauth for social auth and DRF tokens for API auth.
 """
+from urllib.parse import urlencode
 from rest_framework import status, generics, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
+from rest_framework.throttling import AnonRateThrottle
+from django.conf import settings
+from django.core import signing
+from django.core.mail import send_mail
+from django.shortcuts import redirect
 from django.contrib.auth import authenticate, login, logout, get_user_model
 from django.contrib.auth.models import User
 from django.db.models import Count
 from .models import Complaint, ReportScore
 from .views import compute_badges, compute_level
+
+
+class AuthThrottle(AnonRateThrottle):
+    """Brute-force protection for login/register, keyed by client IP."""
+    scope = 'auth'
+
+
+class ResendThrottle(AnonRateThrottle):
+    """Email-bomb protection for verification resends, keyed by client IP."""
+    scope = 'resend'
 from .api import ComplaintListSerializer
+from .profanity import contains_profanity
 
 UserModel = get_user_model()
+
+EMAIL_VERIFY_SALT = 'comap.email.verify'
+
+
+def _send_verification_email(request, user):
+    """Email the user a signed, time-limited verification link."""
+    token = signing.dumps({'uid': user.pk, 'email': user.email}, salt=EMAIL_VERIFY_SALT)
+    # Link points at the backend verify endpoint, which activates then bounces
+    # the user to the SPA (logged in).
+    verify_url = request.build_absolute_uri(f'/api/auth/verify-email/?token={token}')
+    send_mail(
+        subject='Verify your Co-Map account',
+        message=(
+            f"Welcome to Co-Map!\n\n"
+            f"Confirm your email to activate your account:\n{verify_url}\n\n"
+            f"This link expires in 3 days. If you didn't sign up, ignore this email."
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[user.email],
+        fail_silently=False,
+    )
 
 
 class RegisterView(generics.CreateAPIView):
     """Register a new user with email + password."""
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AuthThrottle]
+    # Token-issuing endpoint — no session, so skip SessionAuthentication's
+    # CSRF enforcement (a stale sessionid cookie otherwise 403s the POST).
+    authentication_classes = []
 
     def create(self, request, *args, **kwargs):
         email = request.data.get('email', '').strip().lower()
@@ -29,6 +71,8 @@ class RegisterView(generics.CreateAPIView):
             return Response({'error': 'Email and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
         if len(password) < 8:
             return Response({'error': 'Password must be at least 8 characters.'}, status=status.HTTP_400_BAD_REQUEST)
+        if name and contains_profanity(name):
+            return Response({'error': 'Please choose a respectful display name.'}, status=status.HTTP_400_BAD_REQUEST)
         if UserModel.objects.filter(email=email).exists():
             return Response({'error': 'An account with this email already exists.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -40,31 +84,43 @@ class RegisterView(generics.CreateAPIView):
             username = f"{base}{i}"
             i += 1
 
+        # Create the account INACTIVE — it can't log in until the email is
+        # verified via the link we send below.
         user = UserModel.objects.create_user(
             username=username,
             email=email,
             password=password,
+            is_active=False,
         )
         if name:
             user.first_name = name
             user.save()
 
-        token, _ = Token.objects.get_or_create(user=user)
+        try:
+            _send_verification_email(request, user)
+        except Exception:
+            # Don't leave a half-registered ghost if email sending fails.
+            user.delete()
+            return Response(
+                {'error': 'Could not send the verification email. Please try again.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
+        # No token yet — the user must verify first.
         return Response({
-            'token': token.key,
-            'user': {
-                'id': user.id,
-                'email': user.email,
-                'name': user.first_name or user.email.split('@')[0],
-                'is_staff': user.is_staff,
-            }
+            'detail': 'verification_sent',
+            'message': f'We sent a verification link to {email}. Check your inbox to activate your account.',
+            'email': email,
         }, status=status.HTTP_201_CREATED)
 
 
 class LoginView(generics.GenericAPIView):
     """Login with email + password."""
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [AuthThrottle]
+    # Token-issuing endpoint — no session, so skip SessionAuthentication's
+    # CSRF enforcement (a stale sessionid cookie otherwise 403s the POST).
+    authentication_classes = []
 
     def post(self, request, *args, **kwargs):
         email = request.data.get('email', '').strip().lower()
@@ -75,15 +131,24 @@ class LoginView(generics.GenericAPIView):
 
         # Try to find user by email
         try:
-            user = UserModel.objects.get(email=email)
+            account = UserModel.objects.get(email=email)
         except UserModel.DoesNotExist:
             return Response({'error': 'No account found with this email.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        user = authenticate(request, username=user.username, password=password)
+        # Block unverified accounts with an actionable message (authenticate()
+        # would otherwise just return None and look like a wrong password).
+        if not account.is_active:
+            return Response(
+                {'error': 'Please verify your email before signing in. Check your inbox or request a new link.',
+                 'detail': 'email_not_verified', 'email': account.email},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        user = authenticate(request, username=account.username, password=password)
         if user is None:
             return Response({'error': 'Invalid password.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        login(request, user)
+        # Token auth only — no Django session (avoids the CSRF-cookie trap).
         token, _ = Token.objects.get_or_create(user=user)
 
         return Response({
@@ -172,14 +237,97 @@ class MeView(generics.GenericAPIView):
 @permission_classes([permissions.AllowAny])
 def social_auth_urls(request):
     """Return the social auth provider URLs for the frontend."""
-    from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
-    from allauth.socialaccount.providers.github.views import GitHubOAuth2Adapter
-    from allauth.account.utils import get_next_redirect_url
-    from dj_rest_auth.registration.views import SocialLoginView
-
     base_url = request.build_absolute_uri('/').rstrip('/')
 
     return Response({
         'google': f'{base_url}/accounts/google/login/',
         'github': f'{base_url}/accounts/github/login/',
     })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def social_complete(request):
+    """Bridge: allauth lands a social-logged-in user here (session auth).
+
+    Mint a DRF token and redirect to the SPA with ?token=… so the React app
+    can store it and behave exactly like an email/password login. On failure,
+    send the user back to the SPA login page with an error flag.
+    """
+    frontend = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+
+    if not request.user.is_authenticated:
+        return redirect(f"{frontend}/?auth_error=social")
+
+    token, _ = Token.objects.get_or_create(user=request.user)
+    # Hand the token to the SPA via the URL fragment-free query string. The SPA
+    # reads it on load, stores it, then strips it from the address bar.
+    params = urlencode({
+        'token': token.key,
+        'name': request.user.first_name or request.user.email.split('@')[0],
+        'email': request.user.email,
+        'is_staff': '1' if request.user.is_staff else '0',
+    })
+    return redirect(f"{frontend}/?{params}")
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def verify_email(request):
+    """Activate an account from a signed verification link, then redirect to
+    the SPA logged in (?token=…). Invalid/expired links bounce with an error."""
+    frontend = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    raw = request.query_params.get('token', '')
+    max_age = getattr(settings, 'EMAIL_VERIFICATION_MAX_AGE', 60 * 60 * 24 * 3)
+
+    try:
+        data = signing.loads(raw, salt=EMAIL_VERIFY_SALT, max_age=max_age)
+    except signing.SignatureExpired:
+        return redirect(f"{frontend}/?verify_error=expired")
+    except signing.BadSignature:
+        return redirect(f"{frontend}/?verify_error=invalid")
+
+    try:
+        user = UserModel.objects.get(pk=data['uid'], email=data['email'])
+    except UserModel.DoesNotExist:
+        return redirect(f"{frontend}/?verify_error=invalid")
+
+    if not user.is_active:
+        user.is_active = True
+        user.save(update_fields=['is_active'])
+
+    # Log them straight in by handing the SPA a token.
+    token, _ = Token.objects.get_or_create(user=user)
+    params = urlencode({
+        'token': token.key,
+        'name': user.first_name or user.email.split('@')[0],
+        'email': user.email,
+        'is_staff': '1' if user.is_staff else '0',
+        'verified': '1',
+    })
+    return redirect(f"{frontend}/?{params}")
+
+
+class ResendVerificationView(generics.GenericAPIView):
+    """Re-send the verification link for an unverified account."""
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [ResendThrottle]
+    authentication_classes = []
+
+    def post(self, request, *args, **kwargs):
+        email = request.data.get('email', '').strip().lower()
+        if not email:
+            return Response({'error': 'Email is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Always respond the same way so we don't leak which emails exist.
+        try:
+            user = UserModel.objects.get(email=email)
+            if not user.is_active:
+                _send_verification_email(request, user)
+        except UserModel.DoesNotExist:
+            pass
+
+        return Response({
+            'detail': 'verification_sent',
+            'message': f'If an unverified account exists for {email}, a new link is on its way.',
+        })

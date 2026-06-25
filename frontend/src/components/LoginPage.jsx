@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { login, register, isLoggedIn } from '../api';
+import { login, register, resendVerification, isLoggedIn } from '../api';
 
 export default function LoginPage({ onLogin, onBack }) {
   const [mode, setMode] = useState('login');
@@ -8,54 +8,109 @@ export default function LoginPage({ onLogin, onBack }) {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [sentTo, setSentTo] = useState('');        // "check your email" screen
+  const [needsVerify, setNeedsVerify] = useState(false); // login blocked, offer resend
+  const [resentMsg, setResentMsg] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setNeedsVerify(false);
+    setResentMsg('');
     setLoading(true);
     try {
-      let result;
       if (mode === 'register') {
-        result = await register(email, password, name);
+        const result = await register(email, password, name);
+        setSentTo(result.email || email);   // show "verify your email" screen
       } else {
-        result = await login(email, password);
+        const result = await login(email, password);
+        onLogin(result.user);
+        onBack();
       }
-      onLogin(result.user);
-      onBack();
     } catch (err) {
       setError(err.message);
+      if (err.kind === 'auth' && /verify/i.test(err.message)) setNeedsVerify(true);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setResentMsg('');
+    try {
+      const r = await resendVerification(email);
+      setResentMsg(r.message || 'Verification link sent.');
+    } catch (err) {
+      setResentMsg(err.message || 'Could not resend. Try again.');
     }
   };
 
   const switchMode = () => {
     setMode(mode === 'login' ? 'register' : 'login');
     setError('');
+    setNeedsVerify(false);
+    setResentMsg('');
   };
 
   return (
-    <div className="login-page">
-      <div className="login-page-bg" />
-      <div className="login-page-card">
-        {/* Back button */}
-        <button className="login-page-back" onClick={onBack}>
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12"/>
-            <polyline points="12 19 5 12 12 5"/>
+    <div className="auth-split">
+      {/* ── Left: brand panel (black & white landing aesthetic) ── */}
+      <aside className="auth-brand">
+        <div className="auth-brand-grid" aria-hidden="true" />
+        <div className="auth-brand-glow" aria-hidden="true" />
+
+        <button className="auth-brand-back" onClick={onBack}>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
           </svg>
-          Back
+          Back to map
         </button>
 
-        {/* Logo */}
-        <div className="login-page-logo">
-          <svg viewBox="0 0 28 40" width="28" height="38" fill="none">
-            <path d="M14 39C14 39 2 26 2 14 2 7.5 7.5 2 14 2s12 5.5 12 12c0 12-12 25-12 25z" fill="var(--accent)" opacity="0.9"/>
-            <circle cx="14" cy="14" r="5" fill="#0d1117"/>
-          </svg>
+        <div className="auth-brand-mark">
+          <img src="/logo_com.jpeg" alt="" className="brand-logo brand-logo-lg" />
           <span>Co-Map</span>
         </div>
 
+        <div className="auth-brand-copy">
+          <span className="auth-brand-tag">[ COMMUNITY MAP ]</span>
+          <h1 className="auth-brand-headline">Report.<br/>Track.<br/>Resolve.</h1>
+          <p className="auth-brand-sub">
+            Join your neighborhood in mapping local issues — and watch them get fixed.
+          </p>
+        </div>
+
+        <div className="auth-brand-foot">Built for better neighborhoods</div>
+      </aside>
+
+      {/* ── Right: auth card ── */}
+      <main className="auth-panel">
+      <div className="login-page-bg" />
+      <div className="login-page-card">
+        <div className="login-page-logo auth-card-logo-mobile">
+          <img src="/logo_com.jpeg" alt="" className="brand-logo brand-logo-lg" />
+          <span>Co-Map</span>
+        </div>
+
+        {sentTo ? (
+          /* ── Verification-sent screen ── */
+          <div className="verify-sent">
+            <div className="verify-sent-icon">
+              <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><polyline points="22 7 12 13 2 7"/>
+              </svg>
+            </div>
+            <h2 className="login-page-title">Check your email</h2>
+            <p className="login-page-subtitle">
+              We sent a verification link to <strong>{sentTo}</strong>. Click it to activate your account, then sign in.
+            </p>
+            <button type="button" className="btn btn-ghost btn-block" onClick={handleResend}>Resend link</button>
+            {resentMsg && <p className="verify-resent-msg">{resentMsg}</p>}
+            <button type="button" className="link-btn verify-back" onClick={() => { setSentTo(''); setMode('login'); }}>
+              Back to sign in
+            </button>
+          </div>
+        ) : (
+        <>
         <h2 className="login-page-title">
           {mode === 'login' ? 'Welcome back' : 'Create your account'}
         </h2>
@@ -81,7 +136,13 @@ export default function LoginPage({ onLogin, onBack }) {
           </button>
         </div>
 
-        {/* SSO buttons */}
+        {/* ── SSO buttons ───────────────────────────────────────────── */}
+        {/* 🔑 Google OAuth setup: https://console.cloud.google.com/apis/credentials
+             Create OAuth 2.0 Client ID → add redirect URI
+             https://yourdomain.com/accounts/google/login/callback/
+             Then set GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET env vars on the server.
+             GitHub OAuth setup: https://github.com/settings/developers
+             Same pattern — new OAuth App, same callback URL. */}
         <div className="login-page-sso">
           <a href="/accounts/google/login/" className="sso-btn">
             <svg viewBox="0 0 24 24" width="18" height="18">
@@ -129,13 +190,29 @@ export default function LoginPage({ onLogin, onBack }) {
             </div>
           )}
 
-          {error && <p className="login-error">{error}</p>}
+          {error && (
+            <div className="form-error" role="alert">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <span>{error}</span>
+            </div>
+          )}
+          {needsVerify && (
+            <button type="button" className="link-btn verify-resend-inline" onClick={handleResend}>
+              Resend verification email
+            </button>
+          )}
+          {resentMsg && <p className="verify-resent-msg">{resentMsg}</p>}
 
           <button type="submit" className="btn btn-primary btn-block" disabled={loading || !email || !password}>
             {loading ? <><span className="spinner" /> ...</> : mode === 'login' ? 'Sign In' : 'Create Account'}
           </button>
         </form>
+        </>
+        )}
       </div>
+      </main>
     </div>
   );
 }

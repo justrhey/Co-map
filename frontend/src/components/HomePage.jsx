@@ -1,114 +1,199 @@
-/* ── Sample map screenshot (SVG) ──────────────────────────────── */
-function MapPreview() {
+import { useState, useEffect, useRef } from 'react';
+import LiveMapPreview from './LiveMapPreview';
+
+/* ── Scroll reveal hook (IntersectionObserver, no scroll listeners) ──── */
+function useReveal(threshold = 0.15) {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.unobserve(el); } },
+      { threshold }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [threshold]);
+
+  return [ref, visible];
+}
+
+/* ── Animated counter: counts up once when it enters the viewport.
+   Motivated motion (feedback on real stats); honors reduced motion. ───── */
+function AnimatedNumber({ value, suffix = '' }) {
+  const ref = useRef(null);
+  const [display, setDisplay] = useState(0);
+  const [started, setStarted] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) { setDisplay(value); return; }
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setStarted(true); obs.unobserve(el); } },
+      { threshold: 0.3 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [value]);
+
+  useEffect(() => {
+    if (!started) return;
+    let frame;
+    const to = value;
+    const duration = 1200;
+    const start = performance.now();
+    function tick(now) {
+      const progress = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.round(to * eased));
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    }
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [started, value]);
+
+  return <span ref={ref}>{display}{suffix}</span>;
+}
+
+/* ── Stats section ───────────────────────────────────────────── */
+function StatsBar({ stats, loading }) {
+  const total = stats?.total ?? 0;
+  const resolved = stats?.by_status?.resolved ?? 0;
+  const resolutionRate = total > 0 ? Math.round((resolved / total) * 100) : 0;
+  const categoryCount = Object.keys(stats?.by_category ?? {}).length;
+
   return (
-    <div className="map-preview-container">
-      {/* Corner brackets */}
-      <div className="geo-bracket geo-bracket-tl" />
-      <div className="geo-bracket geo-bracket-tr" />
-      <div className="geo-bracket geo-bracket-bl" />
-      <div className="geo-bracket geo-bracket-br" />
-
-      <svg className="map-preview-svg" viewBox="0 0 400 300" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
-        {/* Grid pattern */}
-        <defs>
-          <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5" />
-          </pattern>
-          <filter id="glow">
-            <feGaussianBlur stdDeviation="2" result="blur" />
-            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-        </defs>
-
-        {/* Base fill */}
-        <rect width="400" height="300" fill="#111111" />
-        <rect width="400" height="300" fill="url(#grid)" />
-
-        {/* Major road - horizontal */}
-        <path d="M0 160 Q100 155 200 165 Q280 172 400 160" stroke="rgba(255,255,255,0.15)" strokeWidth="2" fill="none" />
-        <path d="M0 162 Q100 157 200 167 Q280 174 400 162" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="none" />
-
-        {/* Major road - diagonal */}
-        <path d="M80 0 L150 300" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5" fill="none" />
-        <path d="M90 0 L160 300" stroke="rgba(255,255,255,0.06)" strokeWidth="0.8" fill="none" />
-
-        {/* Secondary roads */}
-        <path d="M0 100 L400 100" stroke="rgba(255,255,255,0.07)" strokeWidth="1" fill="none" />
-        <path d="M0 220 L400 220" stroke="rgba(255,255,255,0.07)" strokeWidth="1" fill="none" />
-        <path d="M120 0 L120 300" stroke="rgba(255,255,255,0.07)" strokeWidth="1" fill="none" />
-        <path d="M320 0 L320 300" stroke="rgba(255,255,255,0.07)" strokeWidth="1" fill="none" />
-
-        {/* River / water */}
-        <path d="M200 0 C180 40 220 80 210 120 C200 160 230 200 215 240 C200 280 210 290 210 300" stroke="rgba(255,255,255,0.08)" strokeWidth="6" fill="none" />
-        <path d="M200 0 C180 40 220 80 210 120 C200 160 230 200 215 240 C200 280 210 290 210 300" stroke="rgba(255,255,255,0.04)" strokeWidth="12" fill="none" />
-
-        {/* Park/green area outline */}
-        <rect x="260" y="50" width="60" height="50" rx="2" stroke="rgba(255,255,255,0.08)" strokeWidth="1" fill="rgba(255,255,255,0.02)" />
-
-        {/* Building footprints */}
-        <rect x="30" y="180" width="18" height="14" rx="1" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" fill="rgba(255,255,255,0.02)" />
-        <rect x="52" y="178" width="12" height="16" rx="1" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" fill="rgba(255,255,255,0.02)" />
-        <rect x="35" y="200" width="22" height="12" rx="1" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" fill="rgba(255,255,255,0.02)" />
-
-        <rect x="330" y="190" width="15" height="12" rx="1" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" fill="rgba(255,255,255,0.02)" />
-        <rect x="350" y="188" width="20" height="14" rx="1" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" fill="rgba(255,255,255,0.02)" />
-        <rect x="345" y="208" width="16" height="10" rx="1" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" fill="rgba(255,255,255,0.02)" />
-
-        {/* Map marker cluster */}
-        <g filter="url(#glow)">
-          {/* Pin 1 - large, active */}
-          <circle cx="140" cy="140" r="4" fill="#FFF" opacity="0.9" />
-          <circle cx="140" cy="140" r="8" fill="rgba(255,255,255,0.08)" />
-          <path d="M140 150 L140 170" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" />
-
-          {/* Pin 2 */}
-          <circle cx="260" cy="220" r="3" fill="#FFF" opacity="0.6" />
-          <circle cx="260" cy="220" r="6" fill="rgba(255,255,255,0.05)" />
-          <path d="M260 228 L260 240" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-
-          {/* Pin 3 - cluster indicator */}
-          <circle cx="320" cy="80" r="6" fill="rgba(255,255,255,0.12)" />
-          <circle cx="320" cy="80" r="3" fill="rgba(255,255,255,0.04)" />
-
-          {/* Pin 4 */}
-          <circle cx="70" cy="60" r="2.5" fill="#FFF" opacity="0.4" />
-          <path d="M70 65 L70 75" stroke="rgba(255,255,255,0.08)" strokeWidth="0.8" />
-        </g>
-
-        {/* Mini info card overlay */}
-        <rect x="50" y="30" width="100" height="20" rx="2" fill="rgba(0,0,0,0.6)" stroke="rgba(255,255,255,0.06)" strokeWidth="0.5" />
-        <text x="60" y="43" fill="rgba(255,255,255,0.5)" fontFamily="monospace" fontSize="7" letterSpacing="1">GRID: 14.56, 121.04</text>
-
-        {/* Scale bar */}
-        <line x1="300" y1="269" x2="340" y2="269" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
-        <line x1="300" y1="267" x2="300" y2="271" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
-        <line x1="340" y1="267" x2="340" y2="271" stroke="rgba(255,255,255,0.2)" strokeWidth="0.5" />
-        <text x="315" y="264" fill="rgba(255,255,255,0.15)" fontFamily="monospace" fontSize="5" textAnchor="middle">500m</text>
-
-        {/* Compass rose */}
-        <g transform="translate(372, 36)">
-          <circle cx="0" cy="0" r="8" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" fill="none" />
-          <polygon points="0,-6 -2,2 0,0.5 2,2" fill="rgba(255,255,255,0.2)" />
-          <polygon points="0,6 -2,-2 0,-0.5 2,-2" fill="rgba(255,255,255,0.08)" />
-        </g>
-      </svg>
-
-      {/* Bottom bar */}
-      <div className="map-preview-bar">
-        <span className="map-preview-bar-text">12 markers visible</span>
-        <span className="map-preview-bar-text">Metro Manila</span>
-        <span className="map-preview-bar-text">zoom 14</span>
+    <div className="bw-stats">
+      <div className="bw-stat">
+        <span className="bw-stat-value">{loading ? '-' : <AnimatedNumber value={total} />}</span>
+        <span className="bw-stat-label">Total Reports</span>
+      </div>
+      <div className="bw-stat-divider" />
+      <div className="bw-stat">
+        <span className="bw-stat-value">{loading ? '-' : <AnimatedNumber value={resolved} />}</span>
+        <span className="bw-stat-label">Resolved</span>
+      </div>
+      <div className="bw-stat-divider" />
+      <div className="bw-stat">
+        <span className="bw-stat-value">{loading ? '-' : <AnimatedNumber value={resolutionRate} suffix="%" />}</span>
+        <span className="bw-stat-label">Resolution Rate</span>
+      </div>
+      <div className="bw-stat-divider" />
+      <div className="bw-stat">
+        <span className="bw-stat-value">{loading ? '-' : <AnimatedNumber value={categoryCount} />}</span>
+        <span className="bw-stat-label">Categories</span>
       </div>
     </div>
   );
 }
 
+/* ── Category chip (no decorative dot) ────────────────────────── */
+const CATEGORY_LIST = [
+  'Potholes', 'Streetlight', 'Graffiti', 'Illegal Dumping',
+  'Sidewalk', 'Traffic Signs', 'Noise', 'Parks', 'Drainage', 'Other',
+];
+
+function CategoryChip({ label, index }) {
+  return (
+    <div className="bw-chip" style={{ animationDelay: `${index * 0.05}s` }}>
+      <span className="bw-chip-label">{label}</span>
+    </div>
+  );
+}
+
+/* ── Feature card ─────────────────────────────────────────────── */
+function FeatureCard({ icon, title, desc, index }) {
+  const [revealRef, visible] = useReveal(0.1);
+  return (
+    <div
+      ref={revealRef}
+      className={`bw-feature ${visible ? 'revealed' : ''}`}
+      style={{ transitionDelay: `${index * 0.06}s` }}
+    >
+      <div className="bw-feature-card">
+        <div className="bw-feature-icon">{icon}</div>
+        <h3 className="bw-feature-title">{title}</h3>
+        <p className="bw-feature-desc">{desc}</p>
+      </div>
+    </div>
+  );
+}
+
+/* ── Step card ────────────────────────────────────────────────── */
+function StepCard({ number, icon, title, desc, index }) {
+  const [ref, visible] = useReveal(0.15);
+  return (
+    <div
+      ref={ref}
+      className={`bw-step ${visible ? 'revealed' : ''}`}
+      style={{ transitionDelay: `${index * 0.12}s` }}
+    >
+      <div className="bw-step-number">{number}</div>
+      <div className="bw-step-icon">{icon}</div>
+      <h3 className="bw-step-title">{title}</h3>
+      <p className="bw-step-desc">{desc}</p>
+    </div>
+  );
+}
+
+/* ── Data hook ────────────────────────────────────────────────── */
+function usePublicStats() {
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const cached = sessionStorage.getItem('home_stats_cache');
+    if (cached) { try { setStats(JSON.parse(cached)); setLoading(false); } catch {} }
+
+    const controller = new AbortController();
+    fetch('/api/public/summary/', { signal: controller.signal })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data) {
+          setStats(data);
+          sessionStorage.setItem('home_stats_cache', JSON.stringify(data));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+
+    return () => controller.abort();
+  }, []);
+
+  return { stats, loading };
+}
+
+/* ── Revealable section wrapper ────────────────────────────────── */
+function Section({ className, children }) {
+  const [ref, vis] = useReveal(0.1);
+  return <section ref={ref} className={`${className} ${vis ? 'revealed' : ''}`}>{children}</section>;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIN PAGE
+   ═══════════════════════════════════════════════════════════════ */
 export default function HomePage({ onNavigate }) {
+  const { stats, loading } = usePublicStats();
+  const [heroRef, heroVisible] = useReveal(0.05);
+  const [ctaRef, ctaVisible] = useReveal(0.15);
+  const [heroStagger, setHeroStagger] = useState(false);
+
+  // One-shot entrance stagger after mount (no scroll listeners).
+  useEffect(() => {
+    const t = setTimeout(() => setHeroStagger(true), 200);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
     <div className="lp">
-      {/* ── Header ── */}
+      {/* ── Header (always visible) ── */}
       <header className="lp-header">
         <div className="lp-header-left">
+          <img src="/logo_com.jpeg" alt="" className="brand-logo lp-header-logo" />
           <span className="lp-header-tag">Co-Map</span>
         </div>
         <nav className="lp-header-right">
@@ -117,44 +202,169 @@ export default function HomePage({ onNavigate }) {
         </nav>
       </header>
 
-      {/* ── Main 50/50 ── */}
-      <main className="lp-main">
-        {/* Left: Typography Engine */}
-        <section className="lp-left">
-          <span className="lp-micro">[ SECTION 01 // COMMUNITY MAP ]</span>
+      <div className="lp-scroll">
 
-          <h1 className="lp-headline">
-            REPORT.<br />
-            TRACK.<br />
-            RESOLVE.
-          </h1>
+        {/* ── Hero ── */}
+        <section ref={heroRef} className={`lp-hero ${heroVisible ? 'revealed' : ''}`}>
+          <main className="lp-main">
+            <section className="lp-left">
+              <h1 className="lp-headline">
+                <span className={`lp-word ${heroStagger ? 'staggered' : ''}`} style={{ animationDelay: '0.05s' }}>REPORT.</span>
+                <span className={`lp-word ${heroStagger ? 'staggered' : ''}`} style={{ animationDelay: '0.2s' }}>TRACK.</span>
+                <span className={`lp-word ${heroStagger ? 'staggered' : ''}`} style={{ animationDelay: '0.35s' }}>RESOLVE.</span>
+              </h1>
+              <p className="lp-body">
+                A community-powered platform to report local issues, track progress
+                from city officials, and build better neighborhoods, one pin at a time.
+              </p>
+              <div className="lp-ctas">
+                <button className="lp-cta lp-cta-solid" onClick={() => onNavigate('map')}>
+                  Explore the Map
+                </button>
+                <button className="lp-cta lp-cta-ghost" onClick={() => onNavigate('login')}>
+                  Create Account
+                </button>
+              </div>
+            </section>
+            <section className="lp-right">
+              <LiveMapPreview onEnter={() => onNavigate('map')} />
+            </section>
+          </main>
+        </section>
 
-          <p className="lp-body">
-            A community-powered platform to report local issues, track progress
-            from city officials, and build better neighborhoods — one pin at a time.
-          </p>
+        {/* ── Stats ── */}
+        <Section className="bw-section">
+          <StatsBar stats={stats} loading={loading} />
+        </Section>
 
-          <div className="lp-ctas">
-            <button className="lp-cta lp-cta-solid" onClick={() => onNavigate('map')}>
-              Explore the Map
-            </button>
-            <button className="lp-cta lp-cta-ghost" onClick={() => onNavigate('login')}>
-              Create Account
-            </button>
+        {/* ── How It Works ── */}
+        <Section className="bw-section">
+          <div className="bw-section-header">
+            <h2 className="bw-section-title">Three steps to make your voice heard</h2>
+          </div>
+          <div className="bw-steps">
+            <StepCard
+              number={1} index={0}
+              icon={
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                  <circle cx="12" cy="10" r="3"/>
+                </svg>
+              }
+              title="Pin the Location"
+              desc="Tap anywhere on the map to drop a pin. The address fills in automatically."
+            />
+            <StepCard
+              number={2} index={1}
+              icon={
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                </svg>
+              }
+              title="Describe the Issue"
+              desc="Select a category, add a description, upload a photo, and request action."
+            />
+            <StepCard
+              number={3} index={2}
+              icon={
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+              }
+              title="Track &amp; Earn"
+              desc="Every report gets scored, tracked from pending to resolved, and earns XP."
+            />
+          </div>
+        </Section>
+
+        {/* ── Features ── */}
+        <Section className="bw-section">
+          <div className="bw-section-header">
+            <h2 className="bw-section-title">A full community toolkit</h2>
+          </div>
+          <div className="bw-features-grid">
+            <FeatureCard
+              index={0}
+              icon={<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>}
+              title="Points of Interest"
+              desc="Toggle nearby parks, museums, and landmarks on the map."
+            />
+            <FeatureCard
+              index={1}
+              icon={<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>}
+              title="Area Info"
+              desc="View Wikipedia articles about your current location."
+            />
+            <FeatureCard
+              index={2}
+              icon={<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>}
+              title="Data Analysis"
+              desc="View trends, category breakdowns, and community insights."
+            />
+            <FeatureCard
+              index={3}
+              icon={<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>}
+              title="Gamification"
+              desc="Earn XP, level up, unlock badges, and build your streak."
+            />
+            <FeatureCard
+              index={4}
+              icon={<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>}
+              title="Upvoting"
+              desc="Upvote reports you care about. Issues rise to the top."
+            />
+            <FeatureCard
+              index={5}
+              icon={<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>}
+              title="Admin Panel"
+              desc="Staff users can approve, reject, and resolve reports."
+            />
+          </div>
+        </Section>
+
+        {/* ── Categories ── */}
+        <Section className="bw-section">
+          <div className="bw-section-header">
+            <h2 className="bw-section-title">Every issue, from potholes to parks</h2>
+          </div>
+          <div className="bw-chips">
+            {CATEGORY_LIST.map((cat, i) => (
+              <CategoryChip key={cat} label={cat} index={i} />
+            ))}
+          </div>
+        </Section>
+
+        {/* ── CTA ── */}
+        <section ref={ctaRef} className={`bw-cta-section ${ctaVisible ? 'revealed' : ''}`}>
+          <div className="bw-cta-card">
+            <div className="bw-cta-border" />
+            <div className="bw-cta-content">
+              <h2 className="bw-cta-title">Start Your Account</h2>
+              <p className="bw-cta-desc">
+                Create a free account to submit reports, earn XP, track your impact,
+                and help your community thrive.
+              </p>
+              <div className="lp-ctas" style={{ justifyContent: 'center' }}>
+                <button className="lp-cta lp-cta-solid" onClick={() => onNavigate('login')}>
+                  Create Account
+                </button>
+                <button className="lp-cta lp-cta-ghost" onClick={() => onNavigate('map')}>
+                  Browse as Guest
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 
-        {/* Right: Map preview screenshot */}
-        <section className="lp-right">
-          <MapPreview />
-        </section>
-      </main>
+        {/* ── Footer ── */}
+        <footer className="lp-footer">
+          <span className="lp-footer-left">&copy; 2026 Co-Map</span>
+          <span className="lp-footer-right">Built for better neighborhoods</span>
+        </footer>
 
-      {/* ── Footer ── */}
-      <footer className="lp-footer">
-        <span className="lp-footer-left">&copy; 2026 Co-Map</span>
-        <span className="lp-footer-right">System Status: Active</span>
-      </footer>
+      </div>{/* /lp-scroll */}
     </div>
   );
 }

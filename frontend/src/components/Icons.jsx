@@ -96,15 +96,17 @@ export const CatOther = (props) => (
   </svg>
 );
 
+// Labels are generalized (broad buckets) while the underlying `value` stays the
+// same, so existing data, scoring, colors, and analytics keep working.
 export const CATEGORIES = [
-  { value: 'potholes', label: 'Potholes', Icon: CatPotholes },
-  { value: 'streetlight', label: 'Lights', Icon: CatStreetlight },
-  { value: 'graffiti', label: 'Graffiti', Icon: CatGraffiti },
-  { value: 'illegal_dumping', label: 'Dumping', Icon: CatDumping },
-  { value: 'sidewalk', label: 'Sidewalk', Icon: CatSidewalk },
+  { value: 'potholes', label: 'Roads', Icon: CatPotholes },
+  { value: 'streetlight', label: 'Lighting', Icon: CatStreetlight },
+  { value: 'graffiti', label: 'Vandalism', Icon: CatGraffiti },
+  { value: 'illegal_dumping', label: 'Garbage', Icon: CatDumping },
+  { value: 'sidewalk', label: 'Walkways', Icon: CatSidewalk },
   { value: 'traffic', label: 'Traffic', Icon: CatTraffic },
   { value: 'noise', label: 'Noise', Icon: CatNoise },
-  { value: 'water', label: 'Drainage', Icon: CatWater },
+  { value: 'water', label: 'Flooding', Icon: CatWater },
   { value: 'other', label: 'Other', Icon: CatOther },
 ];
 

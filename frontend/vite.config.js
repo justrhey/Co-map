@@ -18,6 +18,12 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
+      // Social login (django-allauth) lives under /accounts/* — proxy it so the
+      // Google/GitHub buttons reach Django instead of falling through to the SPA.
+      '/accounts': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
       '/static': {
         target: 'http://localhost:8000',
         changeOrigin: true,
