@@ -1,0 +1,16 @@
+# Keep the Python serverless function bundle small and under the size limit.
+# The frontend is built separately by @vercel/static-build; its source and
+# node_modules must not be pulled into the Python function.
+frontend/node_modules
+frontend/dist
+node_modules
+.venv
+venv
+mediafiles
+staticfiles
+*.log
+.git
+docs
+__pycache__
+*.pyc
+.env

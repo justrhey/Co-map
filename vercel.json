@@ -1,19 +1,22 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pip install -r requirements.txt && python manage.py collectstatic --noinput --settings=config.build_settings && cd frontend && npm install && npm run build",
-  "outputDirectory": "frontend/dist",
-  "functions": {
-    "api/index.py": {
-      "runtime": "@vercel/python@4.3.1",
-      "maxDuration": 30,
-      "includeFiles": "staticfiles/**"
+  "version": 2,
+  "builds": [
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist" }
+    },
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python"
     }
-  },
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/admin/(.*)", "destination": "/api/index" },
-    { "source": "/admin", "destination": "/api/index" },
-    { "source": "/accounts/(.*)", "destination": "/api/index" },
-    { "source": "/django-static/(.*)", "destination": "/api/index" }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "api/index.py" },
+    { "src": "/admin(.*)", "dest": "api/index.py" },
+    { "src": "/accounts/(.*)", "dest": "api/index.py" },
+    { "src": "/django-static/(.*)", "dest": "api/index.py" },
+    { "src": "/(.*\\.[a-zA-Z0-9]+)", "dest": "/$1" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
