@@ -10,6 +10,7 @@
     { "source": "/admin/(.*)", "destination": "/api/index" },
     { "source": "/admin", "destination": "/api/index" },
     { "source": "/accounts/(.*)", "destination": "/api/index" },
-    { "source": "/django-static/(.*)", "destination": "/api/index" }
+    { "source": "/django-static/(.*)", "destination": "/api/index" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
