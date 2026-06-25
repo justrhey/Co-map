@@ -1,13 +1,22 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd frontend && npm install && npm run build",
-  "outputDirectory": "frontend/dist",
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/admin/(.*)", "destination": "/api/index" },
-    { "source": "/admin", "destination": "/api/index" },
-    { "source": "/accounts/(.*)", "destination": "/api/index" },
-    { "source": "/django-static/(.*)", "destination": "/api/index" },
-    { "source": "/(.*)", "destination": "/index.html" }
+  "version": 2,
+  "builds": [
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist" }
+    },
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    { "src": "/api/(.*)",    "dest": "/api/index.py" },
+    { "src": "/admin(/.*)?", "dest": "/api/index.py" },
+    { "src": "/accounts/(.*)", "dest": "/api/index.py" },
+    { "src": "/django-static/(.*)", "dest": "/api/index.py" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
