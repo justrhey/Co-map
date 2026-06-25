@@ -1,15 +1,14 @@
-# Keep the Python serverless function bundle small and under the size limit.
-# The frontend is built separately by @vercel/static-build; its source and
-# node_modules must not be pulled into the Python function.
+# Keep large/unnecessary files out of the deploy upload.
+# NOTE: do NOT ignore frontend/dist — @vercel/static-build produces it and its
+# output must remain in the deployment or the SPA 404s. We only drop the heavy
+# source artifacts that builders regenerate or don't need.
 frontend/node_modules
-frontend/dist
 node_modules
 .venv
 venv
 mediafiles
 staticfiles
 *.log
-.git
 docs
 __pycache__
 *.pyc
