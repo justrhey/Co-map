@@ -626,3 +626,7 @@ class ThrottleTests(APITestCase):
         for _ in range(3):
             self.assertEqual(self.client.post(url, {'email': 'pend@example.com'}, format='json').status_code, 200)
         self.assertEqual(self.client.post(url, {'email': 'pend@example.com'}, format='json').status_code, 429)
+
+def test_ci_demo_always_fails(self):
+    self.assertTrue(False, 'This is a deliberate CI demo failure')
+
