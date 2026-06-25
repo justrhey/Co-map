@@ -12,11 +12,11 @@
     }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "api/index.py" },
-    { "src": "/admin(.*)", "dest": "api/index.py" },
-    { "src": "/accounts/(.*)", "dest": "api/index.py" },
-    { "src": "/django-static/(.*)", "dest": "api/index.py" },
-    { "src": "/(.*\\.[a-zA-Z0-9]+)", "dest": "/$1" },
+    { "src": "/api/(.*)", "dest": "/api/index.py" },
+    { "src": "/admin(.*)", "dest": "/api/index.py" },
+    { "src": "/accounts/(.*)", "dest": "/api/index.py" },
+    { "src": "/django-static/(.*)", "dest": "/api/index.py" },
+    { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
