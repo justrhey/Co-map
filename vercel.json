@@ -1,0 +1,19 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pip install -r requirements.txt && python manage.py collectstatic --noinput --settings=config.build_settings && cd frontend && npm install && npm run build",
+  "outputDirectory": "frontend/dist",
+  "functions": {
+    "api/index.py": {
+      "runtime": "@vercel/python@4.3.1",
+      "maxDuration": 30,
+      "includeFiles": "staticfiles/**"
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index" },
+    { "source": "/admin/(.*)", "destination": "/api/index" },
+    { "source": "/admin", "destination": "/api/index" },
+    { "source": "/accounts/(.*)", "destination": "/api/index" },
+    { "source": "/django-static/(.*)", "destination": "/api/index" }
+  ]
+}

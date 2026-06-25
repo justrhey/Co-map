@@ -6,3 +6,8 @@ requests>=2.31
 psycopg2-binary>=2.9
 gunicorn>=22.0
 Pillow>=10.0
+whitenoise>=6.6
+sentry-sdk>=2.13
+# Supabase Storage (S3-compatible) for media uploads in production
+django-storages>=1.14
+boto3>=1.34

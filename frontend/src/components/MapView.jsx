@@ -92,7 +92,10 @@ function moodForHour(h) {
   return 'day';
 }
 
-const BUILDING_HEIGHT = ['coalesce', ['get', 'render_height'], ['get', 'height'], 8];
+// Some building tiles carry a present-but-null/non-numeric height, which makes
+// MapLibre's expression evaluator throw "Expected number, found null". `to-number`
+// coerces those to a usable value (null/NaN → fall through to the 8m default).
+const BUILDING_HEIGHT = ['to-number', ['coalesce', ['get', 'render_height'], ['get', 'height'], 8], 8];
 
 // ── Building fill ─────────────────────────────────────────────────
 // Simple, plain solid colour per time of day — no window pattern, no texture.
@@ -313,7 +316,9 @@ export default function MapView({
                 'fill-extrusion-color': BUILDING_FILL[phase],
                 'fill-extrusion-height': BUILDING_HEIGHT,
                 'fill-extrusion-base': [
-                  'coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0,
+                  'to-number',
+                  ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0],
+                  0,
                 ],
                 'fill-extrusion-opacity': BUILDING_OPACITY[phase],
                 'fill-extrusion-vertical-gradient': true,
@@ -690,7 +695,26 @@ export default function MapView({
 
   return (
     <>
-      <div ref={containerRef} className="map-container" />
+      <div ref={containerRef} className={`map-container${ready ? ' map-loaded' : ''}`} />
+      {/* Loading skeleton — shown until map style + tiles load */}
+      {!ready && (
+        <div className="map-skeleton" aria-hidden="true">
+          <div className="map-skeleton-shimmer" />
+          <div className="map-skeleton-label">Loading map...</div>
+        </div>
+      )}
+      {/* Empty state — shown when map is loaded but no complaints exist */}
+      {ready && complaints && complaints.length === 0 && (
+        <div className="map-empty" aria-label="No reports yet">
+          <svg viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="24" cy="24" r="20" />
+            <line x1="24" y1="16" x2="24" y2="24" />
+            <line x1="24" y1="30" x2="24.01" y2="30" />
+          </svg>
+          <p className="map-empty-title">No reports in this area</p>
+          <p className="map-empty-sub">Tap the + or drag the marker to report an issue</p>
+        </div>
+      )}
       {/* Atmosphere: warm at dusk, deep-blue cozy at night, nothing by day. */}
       <div className={`map-atmosphere mood-${phase}`} aria-hidden="true" />
       <div className="zoom-indicator" ref={zoomLabelRef}>Z{INITIAL_ZOOM}</div>

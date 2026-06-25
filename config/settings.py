@@ -28,6 +28,18 @@ if not DEBUG and SECRET_KEY == _INSECURE_SECRET:
 #   Example: DJANGO_ALLOWED_HOSTS=comap.example.com,api.comap.example.com
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+# ── Sentry (error monitoring) ────────────────────────────────────
+# 📊 Set SENTRY_DSN env var to enable. Get one from https://sentry.io/signup/
+#   Backend: captures Django exceptions + performance traces.
+#   Frontend: see frontend/src/main.jsx for the browser SDK init.
+if os.environ.get('SENTRY_DSN'):
+    import sentry_sdk
+    sentry_sdk.init(
+        dsn=os.environ['SENTRY_DSN'],
+        traces_sample_rate=float(os.environ.get('SENTRY_TRACES_SAMPLE_RATE', '0.1')),
+        send_default_pii=False,  # Don't send user personal data
+    )
+
 # ── Installed Apps ────────────────────────────────────────────────
 INSTALLED_APPS = [
     # Local — must come before admin so our template overrides take precedence
@@ -58,6 +70,7 @@ SITE_ID = 1
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',  # Must be near the top
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # Serve static files in production
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -101,6 +114,10 @@ DATABASES = {
         'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'complaints_pass'),
         'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
         'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+        # Supabase's connection pooler (port 6543) runs in transaction mode,
+        # which is incompatible with Django's server-side cursors. Disable them
+        # when pointed at the pooler so querysets don't error mid-iteration.
+        'DISABLE_SERVER_SIDE_CURSORS': os.environ.get('POSTGRES_PORT', '5432') == '6543',
     }
 }
 
@@ -179,14 +196,12 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
 #   Example: 'https://comap.example.com'
 CORS_ALLOW_CREDENTIALS = True
 
-# 🌐 PRODUCTION: Same here — add frontend domain, e.g. 'https://comap.example.com'
-CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:8000',
-    'http://127.0.0.1:8000',
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://localhost:5500',
-]
+# 🌐 PRODUCTION: set CSRF_TRUSTED_ORIGINS to your deployed origin(s),
+#   comma-separated, e.g. https://your-app.vercel.app
+CSRF_TRUSTED_ORIGINS = os.environ.get(
+    'CSRF_TRUSTED_ORIGINS',
+    'http://localhost:8000,http://127.0.0.1:8000,http://localhost:5173,http://localhost:5174,http://localhost:5500',
+).split(',')
 
 # ── Auth ──────────────────────────────────────────────────────────
 AUTH_PASSWORD_VALIDATORS = [
@@ -205,8 +220,7 @@ AUTHENTICATION_BACKENDS = [
 ACCOUNT_LOGIN_METHODS = {'email'}
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
 # 🚧 PRODUCTION: Set ACCOUNT_EMAIL_VERIFICATION to 'mandatory' to require
-#   email confirmation before users can report. Keeps bots out.
-ACCOUNT_EMAIL_VERIFICATION = 'none'  # Skip email verification in dev
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory'  # Blocks disposable-email bots  # Skip email verification in dev
 ACCOUNT_SESSION_REMEMBER = True
 # 🔒 PRODUCTION: Set ACCOUNT_DEFAULT_HTTP_PROTOCOL=https so allauth
 #   generates HTTPS links for redirects and emails.
@@ -279,10 +293,54 @@ USE_I18N = True
 USE_TZ = True
 
 # ── Static & Media ────────────────────────────────────────────────
-STATIC_URL = 'static/'
+# Namespaced under /django-static/ in production so Django admin/DRF assets
+# never collide with the Vite SPA's own /assets/ files on Vercel. The rewrite
+# in vercel.json routes /django-static/* to the Python function (WhiteNoise).
+STATIC_URL = os.environ.get('DJANGO_STATIC_URL', 'static/')
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-MEDIA_URL = 'media/'
-MEDIA_ROOT = BASE_DIR / 'mediafiles'
+
+# Media: Supabase Storage (S3-compatible) in production, local disk in dev.
+# 📦 PRODUCTION: create a public bucket in Supabase → Storage, then set:
+#   SUPABASE_S3_ENDPOINT  = https://<project-ref>.storage.supabase.co/storage/v1/s3
+#   SUPABASE_S3_REGION    = your project region (e.g. ap-southeast-1)
+#   SUPABASE_S3_BUCKET    = the bucket name (e.g. complaint-media)
+#   SUPABASE_S3_KEY_ID    = Storage access key id  (Project Settings → Storage → S3 keys)
+#   SUPABASE_S3_SECRET    = Storage secret access key
+USE_SUPABASE_STORAGE = bool(os.environ.get('SUPABASE_S3_ENDPOINT'))
+
+if USE_SUPABASE_STORAGE:
+    _media_storage = {
+        'BACKEND': 'storages.backends.s3.S3Storage',
+        'OPTIONS': {
+            'bucket_name': os.environ['SUPABASE_S3_BUCKET'],
+            'endpoint_url': os.environ['SUPABASE_S3_ENDPOINT'],
+            'region_name': os.environ.get('SUPABASE_S3_REGION', ''),
+            'access_key': os.environ['SUPABASE_S3_KEY_ID'],
+            'secret_key': os.environ['SUPABASE_S3_SECRET'],
+            'addressing_style': 'path',          # Supabase requires path-style
+            'signature_version': 's3v4',
+            'file_overwrite': False,
+            'default_acl': None,                 # bucket-level public access
+            'querystring_auth': False,           # serve clean public URLs
+        },
+    }
+    # Public base URL for objects in the bucket (used to build photo URLs).
+    MEDIA_URL = os.environ.get(
+        'SUPABASE_PUBLIC_URL',
+        os.environ['SUPABASE_S3_ENDPOINT'].replace('/storage/v1/s3', '')
+        + f"/storage/v1/object/public/{os.environ['SUPABASE_S3_BUCKET']}/",
+    )
+else:
+    _media_storage = {'BACKEND': 'django.core.files.storage.FileSystemStorage'}
+    MEDIA_URL = 'media/'
+    MEDIA_ROOT = BASE_DIR / 'mediafiles'
+
+STORAGES = {
+    'default': _media_storage,
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

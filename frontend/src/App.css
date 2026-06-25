@@ -79,6 +79,52 @@ html, body {
   z-index: 0;
 }
 
+/* ── Map loading skeleton ── */
+.map-skeleton {
+  position: fixed; inset: 0; z-index: 1;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg, #0d1117);
+  pointer-events: none;
+}
+.map-skeleton-shimmer {
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg,
+    rgba(230,237,243,0.02) 0%,
+    rgba(230,237,243,0.06) 50%,
+    rgba(230,237,243,0.02) 100%
+  );
+  background-size: 200% 200%;
+  animation: map-skeleton-pulse 2s ease-in-out infinite;
+}
+@keyframes map-skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+.map-skeleton-label {
+  position: relative; z-index: 1;
+  font-size: 14px; color: var(--text-2, #8b949e);
+  font-weight: 500; letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ── Map empty state ── */
+.map-empty {
+  position: fixed; inset: 0; z-index: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 8px;
+  background: rgba(13,17,23,0.7);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+}
+.map-empty svg { opacity: 0.4; }
+.map-empty-title {
+  font-size: 16px; font-weight: 700; color: var(--text, #e6edf3); margin: 0;
+}
+.map-empty-sub {
+  font-size: 13px; color: var(--text-2, #8b949e); margin: 0;
+}
+
 /* ── Top Chrome (stacked: bar + filters + toggles, never overlap) ── */
 .top-chrome {
   position: fixed; top: 0; left: 0; right: 0;
@@ -607,6 +653,14 @@ html, body {
 
 .sheet-overlay.open .sheet-backdrop { opacity: 1; }
 
+/* Detail modal is itself a full-screen frosted layer, so its backdrop only
+   needs a light tint — keep the map readable behind the glass panels. */
+.sheet-overlay:has(.detail-sheet) .sheet-backdrop {
+  background: rgba(0, 0, 0, 0.15);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 .sheet {
   position: absolute;
   bottom: 0; left: 0; right: 0;
@@ -638,20 +692,31 @@ html, body {
   overscroll-behavior: contain; /* don't scroll the map behind it */
 }
 
-/* Detail sheet: a FIXED-size frame. However many details a report has, the
-   panel stays the same height and the body scrolls inside it — never overflows
-   or overlaps the screen. */
+/* Detail sheet: full-screen modal. The other map features live in side panels,
+   so the report view takes over the whole viewport. */
 .sheet.detail-sheet {
-  max-height: 88vh;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  height: 100%;
+  border-radius: 0;
+  /* Translucent so the map stays visible behind the frosted glass panels. */
+  background: rgba(13, 17, 23, 0.35);
+  backdrop-filter: blur(8px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  transform: translateY(100%);
 }
+.sheet-overlay.open .sheet.detail-sheet { transform: translateY(0); }
 
 .sheet-backdrop ~ .sheet.detail-sheet .sheet-content {
   flex: 1 1 auto;
   min-height: 0;
-  /* No scrolling — everything fits at a glance. Long text fields are clamped so
-     the report stays within the contained frame. */
-  overflow: hidden;
+  /* Full-screen modal scrolls as a whole if content is tall. */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  padding-top: 8px;
 }
 
 .sheet-overlay.open .sheet { transform: translateY(0); }
@@ -751,9 +816,9 @@ html, body {
   margin: 8px auto;
 }
 
-/* Compact detail sheet content */
-.detail-sheet .sheet-grip { margin: 5px auto; }
-.detail-sheet > .sheet-content { padding: 0 14px 6px; }
+/* Full-screen detail modal: no drag grip needed */
+.detail-sheet .sheet-grip { display: none; }
+.detail-sheet > .sheet-content { padding: 0 0 6px; }
 
 .sheet-content { padding: 2px 16px 20px; }
 
@@ -1093,29 +1158,19 @@ html, body {
   }
   .sheet-overlay.open .sheet { transform: translateX(-50%) translateY(0); }
 
-  /* Report frame sizes to its (clamped) content and is capped to the screen —
-     so it never scrolls and never overflows. */
+  /* Full-screen detail modal on desktop too — overrides the centered-card base.
+     Hidden off-screen by default; slides in only when the overlay is .open. */
   .sheet.detail-sheet {
-    height: auto;
-    max-height: calc(90vh - 40px);
-  }
-
-  /* When the discussion is open, report (480) + 16 gap + discussion (360) form
-     one 856px pair, centered as a unit with equal space on both sides.
-     Report's left edge = 50% - 428px → translateX(-428) from its left:50% base.
-     Both cards become the SAME full-height frame (top:40 → bottom:40) so they
-     match exactly. */
-  .sheet-overlay.discussion-active.open .detail-sheet {
-    left: 50%;
-    top: 40px;
-    bottom: 40px;
-    height: auto;          /* let top/bottom govern so it matches the discussion column */
+    top: 0; left: 0; right: 0; bottom: 0;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
     margin-bottom: 0;
-    max-height: none;
-    /* Pair = report(560) + 16 gap + discussion(360) = 936, half = 468 */
-    transform: translateX(-468px) translateY(0);
-    transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+    border-radius: 0;
+    transform: translateY(100%);
   }
+  .sheet-overlay.open .sheet.detail-sheet { transform: translateY(0); }
 
   /* Submit sheet stays as right sidebar on desktop */
   .submit-sheet {
@@ -1416,7 +1471,7 @@ textarea::placeholder { color: var(--text-3); }
 }
 .detail-badge::before {
   content: ''; width: 7px; height: 7px; border-radius: 50%;
-  background: currentColor; box-shadow: 0 0 6px currentColor;
+  background: currentColor;
 }
 
 /* Status color depth — distinct gradient + glow per stage. */
@@ -1496,9 +1551,380 @@ textarea::placeholder { color: var(--text-3); }
 
 .detail-meta { font-size: 11px; color: var(--text-3); line-height: 1.4; padding: 6px 10px; background: var(--bg); border-radius: var(--radius); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.detail-close-bar { padding: 4px 0 0; }
+/* Full-text variant inside the detail split view — no line clamping */
+.detail-field-text-full {
+  display: block;
+  -webkit-line-clamp: unset;
+  -webkit-box-orient: unset;
+  overflow: visible;
+}
 
-/* ── Hotspot Panel ──────────────────────────────────────────── */
+.detail-close-bar { padding: 4px 0 0; }
+.detail-close-bar .btn { width: 100%; }
+
+/* ── Detail Card Panels (stats / report / discussion) ─────────── */
+/* Independent foldable panels, fully separated. */
+.dp-columns {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 14px 18px 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+/* Frosted-glass panel with a soft gradient sheen and layered depth. */
+.dp-card {
+  position: relative;
+  background:
+    linear-gradient(160deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 40%, transparent 100%),
+    rgba(22, 27, 34, 0.72);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  overflow: hidden;
+  align-self: flex-start;   /* each panel sizes to its own content */
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.05) inset,
+    0 8px 24px rgba(0,0,0,0.28);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+}
+.dp-card:not(.collapsed) {
+  border-color: rgba(255,255,255,0.12);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.06) inset,
+    0 12px 32px rgba(0,0,0,0.34);
+}
+/* Per-panel accent hue (used only for the small header icon) */
+.dp-columns > .dp-card:nth-child(1) { --dp-accent: #fbbf24; }  /* stats — amber */
+.dp-columns > .dp-card:nth-child(2) { --dp-accent: #60a5fa; }  /* report — blue */
+.dp-columns > .dp-card:nth-child(3) { --dp-accent: #a78bfa; }  /* discussion — violet */
+
+/* Header doubles as the fold toggle button. */
+.dp-card-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 16px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+.dp-card-head svg:first-child {
+  color: var(--dp-accent, #60a5fa);
+}
+.dp-card-head:hover { color: var(--text-1); }
+.dp-card.collapsed .dp-card-head { border-bottom: none; }
+.dp-card:not(.collapsed) .dp-card-head {
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.dp-chevron {
+  margin-left: auto;
+  transition: transform 0.25s ease;
+  transform: rotate(-90deg);   /* points right when folded shut */
+  opacity: 0.55;
+}
+.dp-chevron.open { transform: rotate(0deg); }
+.dp-card-body {
+  padding: 14px 16px 16px;
+  animation: dp-unfold 0.28s ease;
+}
+@keyframes dp-unfold {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dp-card-body { animation: none; }
+  .dp-chevron, .dp-modal-close, .dp-card { transition: none; }
+}
+
+/* Full-screen modal header bar */
+.dp-modal-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: rgba(13, 17, 23, 0.6);
+}
+.dp-modal-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-1);
+  letter-spacing: 0.2px;
+}
+/* Single modal-level close button */
+.dp-modal-close {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 50%;
+  background: rgba(30, 36, 44, 0.7);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.dp-modal-close:hover {
+  background: rgba(48, 54, 61, 0.85);
+  color: var(--text-1);
+}
+
+/* Score row */
+.dp-score-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.dp-score-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dp-score-grade {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-1);
+  line-height: 1;
+}
+.dp-score-total {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+/* Breakdown bars in score card */
+.dp-bars { margin: 0; }
+.dp-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.dp-bar-label {
+  font-size: 11px;
+  color: var(--text-2);
+  width: 72px;
+  flex-shrink: 0;
+}
+.dp-bar-track {
+  flex: 1;
+  height: 7px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.dp-bar-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.5s cubic-bezier(0.34, 1.2, 0.64, 1);
+}
+.dp-bar-val {
+  font-size: 11px;
+  font-weight: 600;
+  width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.dp-bar-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.4;
+  font-style: italic;
+}
+.dp-empty {
+  font-size: 13px;
+  color: var(--text-3);
+  margin: 0;
+}
+
+/* Header row in report panel */
+.dp-header-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.dp-address {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 9px 11px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--text-1);
+  line-height: 1.35;
+}
+.dp-address svg { color: #f87171; flex-shrink: 0; }
+
+/* Timeline */
+.dp-timeline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  margin-bottom: 12px;
+  padding: 10px 0;
+}
+.dp-tl {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+.dp-tl::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--border);
+  z-index: 0;
+}
+.dp-tl:first-child::before { left: 50%; width: 50%; }
+.dp-tl:last-child::before { width: 50%; }
+.dp-tl.done::before { background: #22c55e; }
+.dp-tl.active::before { background: #f59e0b; }
+.dp-tl-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border);
+  position: relative;
+  z-index: 1;
+}
+.dp-tl.done .dp-tl-dot { background: #22c55e; }
+.dp-tl.active .dp-tl-dot { background: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,0.2); }
+.dp-tl-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.dp-tl-label { font-size: 9px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.3px; }
+.dp-tl-date { font-size: 10px; color: var(--text-3); }
+
+.dp-title {
+  margin: 0 0 2px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+.dp-time {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Description fields — soft glass sub-cards */
+.dp-fields { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.dp-field {
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+}
+.dp-field-label {
+  display: block;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-3);
+  margin-bottom: 5px;
+}
+.dp-field-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-1);
+  white-space: pre-wrap;
+}
+
+/* Comments inside card — flow naturally, no inner scroll */
+.dp-card .discussion {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+.dp-card .discussion-list {
+  max-height: none;
+}
+.dp-card .discussion-head { display: none; }
+
+/* Three independent side-by-side columns on desktop. Each sizes to its own
+   folded/unfolded content — they don't stretch to match each other. */
+@media (min-width: 768px) {
+  .dp-columns {
+    flex-direction: row;
+    align-items: flex-start;   /* don't stretch panels to equal height */
+    gap: 24px;                 /* clear separation between the three panels */
+  }
+  .dp-card { align-self: flex-start; }
+  .dp-card:nth-child(1) { flex: 0 0 280px; }   /* Overall Stats */
+  .dp-card:nth-child(2) { flex: 1 1 auto; min-width: 0; }  /* View Report */
+  .dp-card:nth-child(3) { flex: 0 0 340px; }   /* Discussions */
+}
+
+/* Image Lightbox (in-page full-screen viewer) */
+.lightbox-overlay {
+  position: fixed; inset: 0;
+  z-index: 5000;
+  background: rgba(0,0,0,0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  animation: lightbox-fadein 0.2s ease;
+}
+@keyframes lightbox-fadein {
+  from { opacity: 0; }
+}
+.lightbox-image {
+  max-width: 95vw;
+  max-height: 95vh;
+  object-fit: contain;
+  cursor: default;
+  border-radius: 6px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+}
+.lightbox-close-btn {
+  position: absolute;
+  top: 20px; right: 20px;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.20);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  z-index: 5001;
+  transition: background 0.15s;
+}
+.lightbox-close-btn:hover { background: rgba(255,255,255,0.20); }
+
+/* Hotspot Panel */
 /* ── Hotspot Panel — Google Maps-style side panel ─────────────── */
 .hotspot-panel {
   position: fixed;
@@ -2326,6 +2752,60 @@ textarea::placeholder { color: var(--text-3); }
   font-size: 12px; color: var(--text-3);
   padding: 6px 0;
 }
+
+/* ── Comment skeleton loader (pulsing ghost rows) ─────────────── */
+.comment-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+.cskel-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  animation: cskel-pulse 1.4s ease-in-out infinite;
+}
+.cskel-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--cskel-base, #20262e);
+  background-image: linear-gradient(100deg, transparent 30%, var(--cskel-shine, rgba(255,255,255,0.06)) 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: cskel-shimmer 1.6s linear infinite;
+}
+.cskel-lines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+  min-width: 0;
+}
+.cskel-line {
+  height: 9px;
+  border-radius: 5px;
+  background: var(--cskel-base, #20262e);
+  background-image: linear-gradient(100deg, transparent 30%, var(--cskel-shine, rgba(255,255,255,0.06)) 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: cskel-shimmer 1.6s linear infinite;
+}
+.cskel-line-name { width: 38%; height: 8px; }
+.cskel-line-body { width: 92%; }
+.cskel-line-short { width: 64%; }
+@keyframes cskel-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+@keyframes cskel-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cskel-row, .cskel-avatar, .cskel-line { animation: none; }
+}
 .comment-group { display: flex; flex-direction: column; gap: 6px; }
 .comment {
   background: var(--bg);
@@ -2575,15 +3055,32 @@ textarea::placeholder { color: var(--text-3); }
   position: relative;
   border-radius: 12px;
   overflow: hidden;
-  background: #000;
+  background: linear-gradient(135deg, #1a1d23 0%, #262b33 100%);
   border: 1px solid var(--border);
   cursor: pointer;
+  min-height: 180px;
 }
 .detail-carousel-media {
   display: block;
   width: 100%;
-  height: 180px;
-  object-fit: cover;
+  height: 200px;
+  object-fit: contain;
+  background: rgba(0,0,0,0.35);
+}
+.detail-carousel-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 200px;
+  color: var(--text-3);
+}
+.detail-carousel-fallback-text {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.6;
 }
 .detail-carousel-audio {
   display: flex;

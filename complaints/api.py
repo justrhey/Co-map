@@ -53,6 +53,11 @@ def validate_media_file(file):
 
 
 class ReportMediaSerializer(serializers.ModelSerializer):
+    file = serializers.SerializerMethodField()
+
+    def get_file(self, obj):
+        return _relative_media_url(obj.file)
+
     class Meta:
         model = ReportMedia
         fields = ['id', 'file', 'media_type', 'uploaded_at']
@@ -68,6 +73,18 @@ class ReportScoreSerializer(serializers.ModelSerializer):
         ]
 
 
+def _relative_media_url(file_field):
+    """Return a root-relative /media/... URL so images load through whatever
+    origin served the SPA (Vite proxy in dev, same domain in prod). Avoids the
+    hardcoded http://localhost:8000 that breaks on 127.0.0.1 / LAN IPs."""
+    if not file_field:
+        return None
+    try:
+        return file_field.url
+    except ValueError:
+        return None
+
+
 class ComplaintListSerializer(serializers.ModelSerializer):
     """Compact serializer for list views — excludes full description to save bandwidth."""
     category_display = serializers.CharField(source='get_category_display', read_only=True)
@@ -76,6 +93,10 @@ class ComplaintListSerializer(serializers.ModelSerializer):
     user = serializers.SerializerMethodField()
     vote_count = serializers.SerializerMethodField()
     user_vote = serializers.SerializerMethodField()
+    photo = serializers.SerializerMethodField()
+
+    def get_photo(self, obj):
+        return _relative_media_url(obj.photo)
 
     class Meta:
         model = Complaint
@@ -117,6 +138,10 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
     score = ReportScoreSerializer(read_only=True)
     vote_count = serializers.SerializerMethodField()
     user_vote = serializers.SerializerMethodField()
+    photo = serializers.SerializerMethodField()
+
+    def get_photo(self, obj):
+        return _relative_media_url(obj.photo)
 
     class Meta:
         model = Complaint

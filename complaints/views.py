@@ -3,9 +3,11 @@ from rest_framework.decorators import api_view, throttle_classes, action, permis
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 from rest_framework.settings import api_settings
+from django.db import connection
 from django.db.models import Count, Exists, OuterRef, Q, Avg
 from django.db.models.functions import Round
 from django.utils import timezone
+from django.http import JsonResponse
 from django.contrib.auth import get_user_model
 from .models import Complaint, ReportScore, Vote, Comment
 from .api import (
@@ -974,3 +976,17 @@ def user_profile(request):
         'level': compute_level(total_xp),
         'reports': reports_data,
     })
+
+
+def health_check(request):
+    """Lightweight health check — returns 200 if app + DB are reachable."""
+    try:
+        connection.ensure_connection()
+        db_ok = True
+    except Exception:
+        db_ok = False
+    status = 200 if db_ok else 503
+    return JsonResponse(
+        {"status": "ok" if db_ok else "degraded", "database": "connected" if db_ok else "unreachable"},
+        status=status,
+    )
