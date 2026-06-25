@@ -1,5 +1,7 @@
 # Co-Map
 
+![CI](https://github.com/justrhey/Co-map/actions/workflows/test.yml/badge.svg)
+
 A community-powered platform where residents can **pin complaints on a map** — report potholes, broken streetlights, graffiti, and more. Built for scale from day one.
 
 ## Features
