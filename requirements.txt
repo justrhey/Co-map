@@ -2,6 +2,10 @@ django>=5.0,<6.1
 djangorestframework>=3.15
 django-cors-headers>=4.0
 django-allauth>=65.0
+# allauth's Google/social JWT verification needs these at import time
+# (transitive locally, but must be pinned so Vercel's fresh install includes them)
+PyJWT>=2.8
+cryptography>=42.0
 requests>=2.31
 psycopg2-binary>=2.9
 gunicorn>=22.0
