@@ -28,6 +28,21 @@ if not DEBUG and SECRET_KEY == _INSECURE_SECRET:
 #   Example: DJANGO_ALLOWED_HOSTS=comap.example.com,api.comap.example.com
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+# On Vercel, every deployment gets a unique *.vercel.app URL. Vercel injects it
+# as VERCEL_URL automatically (no dashboard config). Trust it + all *.vercel.app
+# so the host check never fails on a fresh deploy, even before custom env vars.
+if os.environ.get('VERCEL'):
+    ALLOWED_HOSTS += ['.vercel.app']
+    _vercel_url = os.environ.get('VERCEL_URL')
+    if _vercel_url:
+        ALLOWED_HOSTS.append(_vercel_url)
+    _vercel_branch_url = os.environ.get('VERCEL_BRANCH_URL')
+    if _vercel_branch_url:
+        ALLOWED_HOSTS.append(_vercel_branch_url)
+    CSRF_TRUSTED_ORIGINS_VERCEL = [
+        f'https://{h}' for h in ALLOWED_HOSTS if h.startswith('.') is False and h not in ('localhost', '127.0.0.1')
+    ]
+
 # ── Sentry (error monitoring) ────────────────────────────────────
 # 📊 Set SENTRY_DSN env var to enable. Get one from https://sentry.io/signup/
 #   Backend: captures Django exceptions + performance traces.
@@ -202,6 +217,13 @@ CSRF_TRUSTED_ORIGINS = os.environ.get(
     'CSRF_TRUSTED_ORIGINS',
     'http://localhost:8000,http://127.0.0.1:8000,http://localhost:5173,http://localhost:5174,http://localhost:5500',
 ).split(',')
+
+# On Vercel, also trust the auto-detected deployment URL(s) for CSRF + always
+# emit https links — derived above from VERCEL_URL so this works with no config.
+if os.environ.get('VERCEL'):
+    CSRF_TRUSTED_ORIGINS += globals().get('CSRF_TRUSTED_ORIGINS_VERCEL', [])
+    CSRF_TRUSTED_ORIGINS.append('https://*.vercel.app')
+    ACCOUNT_DEFAULT_HTTP_PROTOCOL = 'https'
 
 # ── Auth ──────────────────────────────────────────────────────────
 AUTH_PASSWORD_VALIDATORS = [
