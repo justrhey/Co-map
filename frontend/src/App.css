@@ -1908,18 +1908,13 @@ textarea::placeholder { color: var(--text-3); }
 }
 .dp-card .discussion-head { display: none; }
 
-/* Three independent side-by-side columns on desktop. Each sizes to its own
-   folded/unfolded content — they don't stretch to match each other. */
-@media (min-width: 768px) {
-  .dp-columns {
-    flex-direction: row;
-    align-items: flex-start;   /* don't stretch panels to equal height */
-    gap: 24px;                 /* clear separation between the three panels */
-  }
-  .dp-card { align-self: flex-start; }
-  .dp-card:nth-child(1) { flex: 0 0 280px; }   /* Overall Stats */
-  .dp-card:nth-child(2) { flex: 1 1 auto; min-width: 0; }  /* View Report */
-  .dp-card:nth-child(3) { flex: 0 0 340px; }   /* Discussions */
+/* Inside the centered popup card the three panels always STACK vertically —
+   one above the next, clearly separated, never overlapping. (The old
+   side-by-side row layout was for the full-screen modal and overflowed the
+   narrow popup, merging the panels.) */
+.dp-columns {
+  flex-direction: column;
+  gap: 16px;
 }
 
 /* Image Lightbox (in-page full-screen viewer) */
