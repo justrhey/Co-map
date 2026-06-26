@@ -4943,7 +4943,7 @@ textarea::placeholder { color: var(--text-3); }
 .bw-stat-label {
   font-size: 11px;
   letter-spacing: 1.5px;
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.55);
   text-transform: uppercase;
 }
 
@@ -5377,7 +5377,12 @@ textarea::placeholder { color: var(--text-3); }
   .bw-stat { padding: 14px 16px; min-width: calc(50% - 1px); }
   .bw-stat-value { font-size: 26px; }
   .bw-stat-divider { display: none; }
-  .bw-step { min-width: unset; width: 100%; max-width: 340px; }
+  /* Stack the steps in a single column — flex:1 + min-width let two squeeze
+     onto one row and overlap on narrow screens. Force full width. */
+  .bw-steps { flex-direction: column; align-items: center; gap: 16px; }
+  .bw-step { flex: 0 0 auto; min-width: 0; width: 100%; max-width: 360px; padding: 28px 22px; }
+  /* Recent-report cards: one clean column on phones. */
+  .bw-recent-grid { grid-template-columns: 1fr; max-width: 380px; margin: 0 auto; }
   .bw-cta-card { padding: 32px 20px; }
   .bw-cta-title { font-size: 22px; }
 }
