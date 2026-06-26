@@ -239,8 +239,13 @@ AUTHENTICATION_BACKENDS = [
 # ── django-allauth configuration ─────────────────────────────────
 ACCOUNT_LOGIN_METHODS = {'email'}
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
+# Master switch for the custom email-verification gate (RegisterView/LoginView).
+# Set REQUIRE_EMAIL_VERIFICATION=false to let users sign in immediately without
+# confirming their email — useful when SMTP isn't configured yet (e.g. early
+# beta). Flip back to true once a real email provider is wired up.
+REQUIRE_EMAIL_VERIFICATION = os.environ.get('REQUIRE_EMAIL_VERIFICATION', 'true').lower() in ('true', '1', 'yes')
 # 🚧 PRODUCTION: Set ACCOUNT_EMAIL_VERIFICATION to 'mandatory' to require
-ACCOUNT_EMAIL_VERIFICATION = 'mandatory'  # Blocks disposable-email bots  # Skip email verification in dev
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory' if REQUIRE_EMAIL_VERIFICATION else 'optional'
 ACCOUNT_SESSION_REMEMBER = True
 # 🔒 PRODUCTION: Set ACCOUNT_DEFAULT_HTTP_PROTOCOL=https so allauth
 #   generates HTTPS links for redirects and emails.

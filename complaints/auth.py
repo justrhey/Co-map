@@ -84,17 +84,32 @@ class RegisterView(generics.CreateAPIView):
             username = f"{base}{i}"
             i += 1
 
-        # Create the account INACTIVE — it can't log in until the email is
-        # verified via the link we send below.
+        require_verify = getattr(settings, 'REQUIRE_EMAIL_VERIFICATION', True)
+
+        # When verification is required, create the account INACTIVE — it can't
+        # log in until the email link is clicked. When it's off (no SMTP yet),
+        # create it active and sign the user straight in.
         user = UserModel.objects.create_user(
             username=username,
             email=email,
             password=password,
-            is_active=False,
+            is_active=not require_verify,
         )
         if name:
             user.first_name = name
             user.save()
+
+        if not require_verify:
+            # Verification disabled — issue a token and log the user in now.
+            token, _ = Token.objects.get_or_create(user=user)
+            return Response({
+                'token': token.key,
+                'user': {
+                    'id': user.id, 'email': user.email,
+                    'name': user.first_name or user.email.split('@')[0],
+                    'is_staff': user.is_staff,
+                },
+            }, status=status.HTTP_201_CREATED)
 
         try:
             _send_verification_email(request, user)
@@ -135,14 +150,21 @@ class LoginView(generics.GenericAPIView):
         except UserModel.DoesNotExist:
             return Response({'error': 'No account found with this email.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # Block unverified accounts with an actionable message (authenticate()
-        # would otherwise just return None and look like a wrong password).
+        require_verify = getattr(settings, 'REQUIRE_EMAIL_VERIFICATION', True)
+
         if not account.is_active:
-            return Response(
-                {'error': 'Please verify your email before signing in. Check your inbox or request a new link.',
-                 'detail': 'email_not_verified', 'email': account.email},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            if require_verify:
+                # Block unverified accounts with an actionable message (authenticate()
+                # would otherwise just return None and look like a wrong password).
+                return Response(
+                    {'error': 'Please verify your email before signing in. Check your inbox or request a new link.',
+                     'detail': 'email_not_verified', 'email': account.email},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            # Verification is off — activate legacy accounts that were stuck
+            # inactive from before, so they're no longer locked out.
+            account.is_active = True
+            account.save(update_fields=['is_active'])
 
         user = authenticate(request, username=account.username, password=password)
         if user is None:
