@@ -6,10 +6,11 @@ export default function ScoreCircle({ score }) {
   const grade = score.letter_grade || 'F';
   const col = scoreColor(score.total);
 
+  // The ring carries the number; the big letter beside it carries the grade —
+  // so the two don't repeat the same information.
   return (
     <div className="score-circle" style={{ borderColor: col }}>
-      <span className="score-circle-grade" style={{ color: col }}>{grade}</span>
-      <span className="score-circle-pct">{score.total}</span>
+      <span className="score-circle-num" style={{ color: col }}>{score.total}</span>
     </div>
   );
 }

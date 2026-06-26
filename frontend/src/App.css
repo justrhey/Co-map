@@ -1657,6 +1657,17 @@ textarea::placeholder { color: var(--text-3); }
   color: var(--dp-accent, #60a5fa);
 }
 .dp-card-head:hover { color: var(--text-1); }
+
+/* Thin accent rule across the top of each panel — the hue encodes the
+   reading order (assess → read → discuss), not decoration. */
+.dp-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--dp-accent, #60a5fa);
+  opacity: 0.7;
+}
 .dp-card.collapsed .dp-card-head { border-bottom: none; }
 .dp-card:not(.collapsed) .dp-card-head {
   border-bottom: 1px solid rgba(255,255,255,0.07);
@@ -1716,27 +1727,34 @@ textarea::placeholder { color: var(--text-3); }
   color: var(--text-1);
 }
 
-/* Score row */
+/* Score row — the grade is the signature of the whole popup, so the letter is
+   the typographic hero. The ring carries the number; the grade carries meaning. */
 .dp-score-row {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-bottom: 14px;
+  gap: 16px;
+  margin-bottom: 18px;
 }
 .dp-score-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 .dp-score-grade {
-  font-size: 22px;
+  font-size: 44px;
   font-weight: 800;
   color: var(--text-1);
-  line-height: 1;
+  line-height: 0.92;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 .dp-score-total {
-  font-size: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
   color: var(--text-3);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Breakdown bars in score card */
@@ -1744,14 +1762,15 @@ textarea::placeholder { color: var(--text-3); }
 .dp-bar-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: 10px;
+  margin-bottom: 9px;
 }
 .dp-bar-label {
   font-size: 11px;
   color: var(--text-2);
-  width: 72px;
+  width: 88px;
   flex-shrink: 0;
+  letter-spacing: 0.1px;
 }
 .dp-bar-track {
   flex: 1;
@@ -3018,17 +3037,11 @@ textarea::placeholder { color: var(--text-3); }
   background: rgba(13,17,23,0.7);
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
-.score-circle-grade {
-  font-size: 12px;
+.score-circle-num {
+  font-size: 14px;
   font-weight: 800;
   line-height: 1;
-  margin-top: 1px;
-}
-.score-circle-pct {
-  font-size: 7px;
-  font-weight: 600;
-  color: var(--text-3);
-  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Detail Header ────────────────────────────────────────────── */

@@ -64,9 +64,7 @@ export default function DetailSheet({ open, complaintId, onClose }) {
                           <ScoreCircle score={complaint.score} />
                           <div className="dp-score-info">
                             <span className="dp-score-grade">{complaint.score.letter_grade || '--'}</span>
-                            <span className="dp-score-total">
-                              {complaint.score.total != null ? `${complaint.score.total}/100` : 'Not scored'}
-                            </span>
+                            <span className="dp-score-total">Report quality</span>
                           </div>
                         </div>
                         <div className="dp-bars">
