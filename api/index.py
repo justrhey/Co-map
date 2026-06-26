@@ -34,6 +34,18 @@ if not os.path.isdir(_STATIC_DIR):
     except Exception as exc:  # never let static collection break the API
         print(f'collectstatic on cold start failed: {exc}')
 
+# Ensure the django_site domain matches the deployed URL (required by
+# django-allauth for OAuth callback URL generation). Idempotent — safe to
+# run on every cold start.
+try:
+    from django.contrib.sites.models import Site
+    from django.conf import settings
+    host = os.environ.get('FRONTEND_URL', '').removeprefix('https://').removeprefix('http://').rstrip('/')
+    if host:
+        Site.objects.update_or_create(id=settings.SITE_ID, defaults={'domain': host, 'name': 'Co-Map'})
+except Exception as exc:
+    print(f'site domain init failed (non-fatal): {exc}')
+
 from django.core.wsgi import get_wsgi_application  # noqa: E402
 
 app = get_wsgi_application()
