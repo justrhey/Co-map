@@ -77,8 +77,6 @@ INSTALLED_APPS = [
     'allauth.account',
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
-    'allauth.socialaccount.providers.github',
-
 ]
 SITE_ID = 1
 
@@ -257,6 +255,10 @@ FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
 # Let allauth start the provider flow on GET (so a plain <a href> works) and
 # skip its own intermediate confirmation pages.
 SOCIALACCOUNT_LOGIN_ON_GET = True
+# Bypass email verification for social logins — Google emails are already
+# verified by the provider. Email/password registration still uses mandatory
+# email verification via ACCOUNT_EMAIL_VERIFICATION above.
+SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
 
 # 🔑 PRODUCTION — Google OAuth setup:
 #   1. Go to https://console.cloud.google.com/apis/credentials
@@ -279,15 +281,6 @@ SOCIALACCOUNT_PROVIDERS = {
         #   Google users to verify again—and since no SMTP is configured on
         #   Vercel, the verification email is silently dropped.
         'VERIFIED_EMAIL': True,
-    },
-    'github': {
-        'APP': {
-            # 🔑 PRODUCTION: Same pattern — GitHub OAuth app in Settings → Developer settings
-            'client_id': os.environ.get('GITHUB_CLIENT_ID', ''),
-            'secret': os.environ.get('GITHUB_CLIENT_SECRET', ''),
-            'key': '',
-        },
-        'SCOPE': ['user:email'],
     },
 }
 
