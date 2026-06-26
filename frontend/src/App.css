@@ -691,29 +691,40 @@ html, body {
   overscroll-behavior: contain; /* don't scroll the map behind it */
 }
 
-/* Detail sheet: full-screen modal (old working layout) with a POP entrance.
-   Stays full-screen-positioned, so only scale+opacity animate — layout never
-   breaks the way the centered-card popup did. */
+/* Detail view: a centered floating CARD that pops over the map — the user
+   never feels like they left the app. Solid, rounded, scrolls internally. */
 .sheet.detail-sheet {
-  top: 0; left: 0; right: 0; bottom: 0;
-  width: 100%;
-  max-width: 100%;
-  max-height: 100%;
-  height: 100%;
-  border-radius: 0;
+  /* Center it; clear the base sheet's bottom:0/left:0/right:0 anchoring. */
+  top: 50%; left: 50%; right: auto; bottom: auto;
+  width: min(560px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  height: auto;
+  max-height: min(86vh, 760px);
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.10);
   /* Fully opaque — map never bleeds through, text always readable. */
   background: #0d1117;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.06) inset,
+    0 30px 80px rgba(0,0,0,0.65);
+  /* The card is a flex column: fixed header + scrolling body. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Pop entrance: scale up + fade from center. */
   transform-origin: center center;
-  transform: scale(0.94);
+  transform: translate(-50%, -50%) scale(0.9);
   opacity: 0;
-  transition: transform 0.32s cubic-bezier(0.34, 1.4, 0.64, 1), opacity 0.22s ease;
+  transition: transform 0.3s cubic-bezier(0.34, 1.45, 0.6, 1), opacity 0.2s ease;
 }
-.sheet-overlay.open .sheet.detail-sheet { transform: scale(1); opacity: 1; }
+.sheet-overlay.open .sheet.detail-sheet {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
 
 .sheet-backdrop ~ .sheet.detail-sheet .sheet-content {
   flex: 1 1 auto;
-  min-height: 0;
-  /* Full-screen modal scrolls as a whole if content is tall. */
+  min-height: 0;            /* lets the body shrink + scroll inside the card */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -1159,19 +1170,19 @@ html, body {
   }
   .sheet-overlay.open .sheet { transform: translateX(-50%) translateY(0); }
 
-  /* Full-screen detail modal on desktop too — overrides the centered-card base.
-     Pops in (scale+fade) when the overlay is .open. */
+  /* Detail card on desktop — a bit wider, still a centered floating popup.
+     Keeps the pop entrance + internal scroll from the base rule. */
   .sheet.detail-sheet {
-    top: 0; left: 0; right: 0; bottom: 0;
-    width: 100%;
-    max-width: 100%;
-    height: 100%;
-    max-height: 100%;
+    width: min(600px, calc(100vw - 48px));
+    max-width: calc(100vw - 48px);
+    max-height: min(88vh, 820px);
     margin-bottom: 0;
-    border-radius: 0;
-    transform: scale(0.94);
+    border-radius: 18px;
+    transform: translate(-50%, -50%) scale(0.9);
   }
-  .sheet-overlay.open .sheet.detail-sheet { transform: scale(1); }
+  .sheet-overlay.open .sheet.detail-sheet {
+    transform: translate(-50%, -50%) scale(1);
+  }
 
   /* Submit sheet stays as right sidebar on desktop */
   .submit-sheet {
