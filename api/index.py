@@ -22,6 +22,20 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 import django  # noqa: E402
 django.setup()
 
+# Apply database migrations on cold start. Vercel's build step doesn't run
+# `migrate`, so schema changes (e.g. new models) would otherwise never reach the
+# live DB. A /tmp sentinel keeps this to once per warm instance, and any failure
+# is swallowed so a transient DB hiccup can't take the whole API down.
+_MIGRATE_SENTINEL = '/tmp/.migrated'
+if not os.path.exists(_MIGRATE_SENTINEL):
+    try:
+        from django.core.management import call_command
+        call_command('migrate', '--noinput', verbosity=0)
+        with open(_MIGRATE_SENTINEL, 'w') as fh:
+            fh.write('ok')
+    except Exception as exc:  # never let a migration error break the API
+        print(f'migrate on cold start failed: {exc}')
+
 # Collect static into /tmp on cold start so WhiteNoise can serve the Django
 # admin / DRF assets. The build step doesn't run collectstatic for the Python
 # function, and the function filesystem is read-only except /tmp. Cached for the
