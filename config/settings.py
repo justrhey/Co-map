@@ -329,10 +329,22 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 USE_SUPABASE_STORAGE = bool(os.environ.get('SUPABASE_S3_ENDPOINT'))
 
 if USE_SUPABASE_STORAGE:
+    _bucket = os.environ['SUPABASE_S3_BUCKET']
+    # Supabase serves public objects from /storage/v1/object/public/<bucket>/,
+    # NOT the S3 API path. We point django-storages' custom_domain at that public
+    # base so file.url builds clean, viewable URLs (without it, S3Storage.url()
+    # derives from endpoint_url and returns the private S3 path → 403).
+    _supabase_host = (
+        os.environ['SUPABASE_S3_ENDPOINT']
+        .split('://', 1)[-1]              # strip scheme
+        .replace('/storage/v1/s3', '')    # → <ref>.storage.supabase.co
+    )
+    _public_domain = f"{_supabase_host}/storage/v1/object/public/{_bucket}"
+
     _media_storage = {
         'BACKEND': 'storages.backends.s3.S3Storage',
         'OPTIONS': {
-            'bucket_name': os.environ['SUPABASE_S3_BUCKET'],
+            'bucket_name': _bucket,
             'endpoint_url': os.environ['SUPABASE_S3_ENDPOINT'],
             'region_name': os.environ.get('SUPABASE_S3_REGION', ''),
             'access_key': os.environ['SUPABASE_S3_KEY_ID'],
@@ -342,14 +354,11 @@ if USE_SUPABASE_STORAGE:
             'file_overwrite': False,
             'default_acl': None,                 # bucket-level public access
             'querystring_auth': False,           # serve clean public URLs
+            'custom_domain': _public_domain,     # build public object URLs
+            'url_protocol': 'https:',
         },
     }
-    # Public base URL for objects in the bucket (used to build photo URLs).
-    MEDIA_URL = os.environ.get(
-        'SUPABASE_PUBLIC_URL',
-        os.environ['SUPABASE_S3_ENDPOINT'].replace('/storage/v1/s3', '')
-        + f"/storage/v1/object/public/{os.environ['SUPABASE_S3_BUCKET']}/",
-    )
+    MEDIA_URL = f"https://{_public_domain}/"
 elif os.environ.get('VERCEL'):
     # Vercel's filesystem is read-only except /tmp. Store uploaded media in
     # /tmp so submissions don't error. ⚠️ Files are lost on cold start — set up
