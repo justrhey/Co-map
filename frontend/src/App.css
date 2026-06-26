@@ -1170,10 +1170,10 @@ html, body {
   }
   .sheet-overlay.open .sheet { transform: translateX(-50%) translateY(0); }
 
-  /* Detail card on desktop — a bit wider, still a centered floating popup.
-     Keeps the pop entrance + internal scroll from the base rule. */
+  /* Detail card on desktop — wide enough for three side-by-side panels.
+     Still a centered floating popup with the pop entrance + internal scroll. */
   .sheet.detail-sheet {
-    width: min(600px, calc(100vw - 48px));
+    width: min(1080px, calc(100vw - 48px));
     max-width: calc(100vw - 48px);
     max-height: min(88vh, 820px);
     margin-bottom: 0;
@@ -1908,13 +1908,25 @@ textarea::placeholder { color: var(--text-3); }
 }
 .dp-card .discussion-head { display: none; }
 
-/* Inside the centered popup card the three panels always STACK vertically —
-   one above the next, clearly separated, never overlapping. (The old
-   side-by-side row layout was for the full-screen modal and overflowed the
-   narrow popup, merging the panels.) */
+/* Mobile (default): panels stack vertically, clearly separated. */
 .dp-columns {
   flex-direction: column;
   gap: 16px;
+}
+
+/* Desktop: three side-by-side columns  [one] [two] [three]  inside the wide
+   popup card. Each sizes to its own content and they never overlap. */
+@media (min-width: 768px) {
+  .dp-columns {
+    flex-direction: row;
+    align-items: flex-start;   /* don't stretch panels to equal height */
+    gap: 20px;
+    padding: 18px 20px 22px;
+  }
+  .dp-card { align-self: flex-start; min-width: 0; }
+  .dp-card:nth-child(1) { flex: 0 0 260px; }              /* Overall Stats */
+  .dp-card:nth-child(2) { flex: 1 1 auto; min-width: 0; } /* View Report */
+  .dp-card:nth-child(3) { flex: 0 0 300px; }              /* Discussions */
 }
 
 /* Image Lightbox (in-page full-screen viewer) */
