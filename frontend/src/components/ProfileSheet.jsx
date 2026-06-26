@@ -294,11 +294,14 @@ export default function ProfileSheet({ open, onClose, user, onUserUpdate, onRepo
                           {editing?.id === r.id ? (
                             <div className="pm-edit">
                               <label className="pm-edit-label">Situation</label>
-                              <textarea className="pm-edit-input" rows={2} value={editing.description || ''} onChange={(e) => setEditing({ ...editing, description: e.target.value })} />
+                              <textarea className="pm-edit-input" rows={2} maxLength={500} value={editing.description || ''} onChange={(e) => setEditing({ ...editing, description: e.target.value })} />
+                              <div className="pm-edit-count"><span className={`char-count${(editing.description || '').length >= 500 ? ' at-limit' : ''}`}>{(editing.description || '').length}/500</span></div>
                               <label className="pm-edit-label">Impact</label>
-                              <textarea className="pm-edit-input" rows={2} value={editing.impact || ''} onChange={(e) => setEditing({ ...editing, impact: e.target.value })} />
+                              <textarea className="pm-edit-input" rows={2} maxLength={300} value={editing.impact || ''} onChange={(e) => setEditing({ ...editing, impact: e.target.value })} />
+                              <div className="pm-edit-count"><span className={`char-count${(editing.impact || '').length >= 300 ? ' at-limit' : ''}`}>{(editing.impact || '').length}/300</span></div>
                               <label className="pm-edit-label">Action requested</label>
-                              <textarea className="pm-edit-input" rows={2} value={editing.action_requested || ''} onChange={(e) => setEditing({ ...editing, action_requested: e.target.value })} />
+                              <textarea className="pm-edit-input" rows={2} maxLength={300} value={editing.action_requested || ''} onChange={(e) => setEditing({ ...editing, action_requested: e.target.value })} />
+                              <div className="pm-edit-count"><span className={`char-count${(editing.action_requested || '').length >= 300 ? ' at-limit' : ''}`}>{(editing.action_requested || '').length}/300</span></div>
                               <div className="pm-edit-actions">
                                 <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)} disabled={busyId === r.id}>Cancel</button>
                                 <button className="btn btn-primary btn-sm" onClick={saveEdit} disabled={busyId === r.id}>
@@ -345,6 +348,7 @@ export default function ProfileSheet({ open, onClose, user, onUserUpdate, onRepo
                         {savingName ? <span className="spinner" /> : 'Save'}
                       </button>
                     </div>
+                    <div className="pm-edit-count"><span className={`char-count${name.length >= 60 ? ' at-limit' : ''}`}>{name.length}/60</span></div>
                   </div>
 
                   <div className="profile-section">

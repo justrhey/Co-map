@@ -3,7 +3,7 @@ from django.core.validators import FileExtensionValidator
 from .models import Complaint, ReportMedia, ReportScore, Comment
 from .profanity import contains_profanity
 
-MAX_COMMENT_LEN = 1000
+MAX_COMMENT_LEN = 250
 
 PROFANITY_MSG = 'Please keep it respectful — remove offensive language and try again.'
 

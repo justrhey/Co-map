@@ -233,18 +233,26 @@ export default function SubmitSheet({ open, latlng, onClose, onSubmit, onLoginRe
                 <textarea id="situation" rows={2} placeholder="What happened? Include street names or landmarks." maxLength={500} value={situation} onChange={(e) => setSituation(e.target.value)} />
                 <div className="textarea-meta">
                   <span className="field-hint">What did you see or experience?</span>
-                  <span className="char-count">{situation.length}/500</span>
+                  <span className={`char-count${situation.length >= 500 ? ' at-limit' : ''}`}>{situation.length}/500</span>
                 </div>
               </div>
 
               <div className="field-group">
                 <label htmlFor="impact">Impact <span className="field-opt">(optional)</span></label>
                 <textarea id="impact" rows={1} placeholder="How does this affect you or the community?" maxLength={300} value={impact} onChange={(e) => setImpact(e.target.value)} />
+                <div className="textarea-meta">
+                  <span className="field-hint">Who or what is affected?</span>
+                  <span className={`char-count${impact.length >= 300 ? ' at-limit' : ''}`}>{impact.length}/300</span>
+                </div>
               </div>
 
               <div className="field-group">
                 <label htmlFor="action">Action Requested <span className="field-opt">(optional)</span></label>
                 <textarea id="action" rows={1} placeholder="What should be done?" maxLength={300} value={actionRequested} onChange={(e) => setActionRequested(e.target.value)} />
+                <div className="textarea-meta">
+                  <span className="field-hint">What outcome do you want?</span>
+                  <span className={`char-count${actionRequested.length >= 300 ? ' at-limit' : ''}`}>{actionRequested.length}/300</span>
+                </div>
               </div>
             </div>
 

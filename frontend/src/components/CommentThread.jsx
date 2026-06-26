@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { fetchCachedComments, postComment, isLoggedIn } from '../api';
 import { timeAgo } from '../utils/time';
 
+const COMMENT_MAX = 250;  // keep in sync with backend MAX_COMMENT_LEN
+
 // Pulsing placeholder that mirrors a real comment's shape so the layout
 // doesn't jump when the data arrives.
 function CommentSkeleton({ rows = 3 }) {
@@ -132,7 +134,7 @@ export default function CommentThread({ complaintId, enabled, fullHeight = false
               className="comment-input"
               placeholder={replyTo ? 'Write a reply…' : 'Add a comment…'}
               value={body}
-              maxLength={1000}
+              maxLength={COMMENT_MAX}
               onChange={(e) => setBody(e.target.value)}
             />
             <button type="submit" className="comment-send" disabled={posting || !body.trim()} aria-label="Send">
@@ -140,6 +142,9 @@ export default function CommentThread({ complaintId, enabled, fullHeight = false
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               )}
             </button>
+          </div>
+          <div className="comment-count-row">
+            <span className={`char-count${body.length >= COMMENT_MAX ? ' at-limit' : ''}`}>{body.length}/{COMMENT_MAX}</span>
           </div>
         </form>
       ) : (

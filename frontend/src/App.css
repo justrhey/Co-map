@@ -1307,7 +1307,13 @@ textarea::placeholder { color: var(--text-3); }
 }
 
 .field-hint { color: var(--text-3); }
-.char-count { font-variant-numeric: tabular-nums; }
+.char-count { font-variant-numeric: tabular-nums; transition: color 0.15s ease; }
+/* Turn the counter amber/red as it approaches and hits the limit. */
+.char-count.at-limit { color: #f87171; font-weight: 700; }
+
+/* Comment counter row + profile inline-edit counters */
+.comment-count-row { display: flex; justify-content: flex-end; margin-top: 5px; padding: 0 2px; font-size: 11.5px; color: var(--text-3); }
+.pm-edit-count { display: flex; justify-content: flex-end; margin: 3px 0 4px; font-size: 11px; color: var(--text-3); }
 
 .field-input {
   width: 100%; padding: 12px 14px;
