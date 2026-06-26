@@ -653,12 +653,11 @@ html, body {
 
 .sheet-overlay.open .sheet-backdrop { opacity: 1; }
 
-/* Detail modal is itself a full-screen frosted layer, so its backdrop only
-   needs a light tint — keep the map readable behind the glass panels. */
+/* Detail modal: dark backdrop so text on the frosted panels is readable. */
 .sheet-overlay:has(.detail-sheet) .sheet-backdrop {
-  background: rgba(0, 0, 0, 0.15);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
 }
 
 .sheet {
@@ -701,10 +700,10 @@ html, body {
   max-height: 100%;
   height: 100%;
   border-radius: 0;
-  /* Translucent so the map stays visible behind the frosted glass panels. */
-  background: rgba(13, 17, 23, 0.35);
-  backdrop-filter: blur(8px) saturate(120%);
-  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  /* Dark solid background so panel text is always readable. */
+  background: rgba(10, 14, 19, 0.95);
+  backdrop-filter: blur(4px) saturate(120%);
+  -webkit-backdrop-filter: blur(4px) saturate(120%);
   transform: translateY(100%);
 }
 .sheet-overlay.open .sheet.detail-sheet { transform: translateY(0); }
@@ -1598,14 +1597,12 @@ textarea::placeholder { color: var(--text-3); }
   margin: 0 auto;
   width: 100%;
 }
-/* Frosted-glass panel with a soft gradient sheen and layered depth. */
+/* Solid card panel with a subtle gradient sheen. */
 .dp-card {
   position: relative;
   background:
-    linear-gradient(160deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 40%, transparent 100%),
-    rgba(22, 27, 34, 0.72);
-  backdrop-filter: blur(16px) saturate(140%);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
+    linear-gradient(160deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 40%, transparent 100%),
+    rgba(18, 23, 30, 0.96);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 16px;
   overflow: hidden;
@@ -1679,7 +1676,7 @@ textarea::placeholder { color: var(--text-3); }
   justify-content: space-between;
   padding: 14px 20px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
-  background: rgba(13, 17, 23, 0.6);
+  background: rgba(13, 17, 23, 0.92);
 }
 .dp-modal-title {
   font-size: 14px;
@@ -3097,15 +3094,17 @@ textarea::placeholder { color: var(--text-3); }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
   height: 200px;
   color: var(--text-3);
 }
+.detail-carousel-fallback svg { opacity: 0.5; }
 .detail-carousel-fallback-text {
-  font-size: 11px;
-  font-weight: 500;
-  opacity: 0.6;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.75;
+  color: var(--text-2);
 }
 .detail-carousel-audio {
   display: flex;
