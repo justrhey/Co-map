@@ -224,14 +224,6 @@ export default function App() {
     setSubmitOpen(true);
   };
 
-  const handleFabReport = () => {
-    if (!isLoggedIn()) { setPage('login'); return; }
-    const pin = { lat: centerLatLng.lat, lng: centerLatLng.lng };
-    setReportPin(pin);
-    setSubmitLatLng(pin);
-    setSubmitOpen(true);
-  };
-
   const handleSubmitClose = () => { setSubmitOpen(false); setSubmitLatLng(null); };
   const handleSubmitSuccess = () => {
     loadData(null, true);  // force fresh fetch after new report
@@ -328,12 +320,6 @@ export default function App() {
 
           <Suspense fallback={null}>
             {isLoggedIn() && !submitOpen && reportPin && <BottomCard latlng={reportPin} onReport={handleReport} />}
-            {!submitOpen && !detailOpen && !profileOpen && (
-              <button className="report-fab" onClick={handleFabReport} aria-label="Report an issue here">
-                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
-                <span className="report-fab-label">Report</span>
-              </button>
-            )}
             <SubmitSheet open={submitOpen} latlng={submitLatLng} onClose={handleSubmitClose} onSubmit={handleSubmitSuccess} onLoginRequired={() => setPage('login')} setToast={setToast} />
             <DetailSheet open={detailOpen} complaintId={detailId} onClose={() => { setDetailOpen(false); setDetailId(null); }} />
             <ProfileSheet open={profileOpen} onClose={() => setProfileOpen(false)} />

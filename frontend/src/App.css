@@ -653,9 +653,9 @@ html, body {
 
 .sheet-overlay.open .sheet-backdrop { opacity: 1; }
 
-/* Detail modal: dark backdrop so text on the frosted panels is readable. */
+/* Detail modal: dark backdrop so the solid popup stands cleanly above the map. */
 .sheet-overlay:has(.detail-sheet) .sheet-backdrop {
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.72);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
 }
@@ -691,22 +691,31 @@ html, body {
   overscroll-behavior: contain; /* don't scroll the map behind it */
 }
 
-/* Detail sheet: full-screen modal. The other map features live in side panels,
-   so the report view takes over the whole viewport. */
+/* Detail view: a centered POPUP (not a full-screen sheet). It floats over the
+   map, scales in with a soft spring, and scrolls internally. Same dark design. */
 .sheet.detail-sheet {
-  top: 0; left: 0; right: 0; bottom: 0;
-  width: 100%;
-  max-width: 100%;
-  max-height: 100%;
-  height: 100%;
-  border-radius: 0;
-  /* Dark solid background so panel text is always readable. */
-  background: rgba(10, 14, 19, 0.95);
-  backdrop-filter: blur(4px) saturate(120%);
-  -webkit-backdrop-filter: blur(4px) saturate(120%);
-  transform: translateY(100%);
+  top: 50%; left: 50%; right: auto; bottom: auto;
+  width: 560px;
+  max-width: calc(100vw - 28px);
+  height: auto;
+  max-height: 86vh;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.10);
+  /* Fully opaque so the map never bleeds through and text is crisp. */
+  background: #0d1117;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.06) inset,
+    0 24px 70px rgba(0,0,0,0.6);
+  /* Closed state: centered, slightly shrunk, transparent. */
+  transform: translate(-50%, -50%) scale(0.92);
+  opacity: 0;
+  /* Spring pop — overshoots gently then settles. */
+  transition: transform 0.34s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.22s ease;
 }
-.sheet-overlay.open .sheet.detail-sheet { transform: translateY(0); }
+.sheet-overlay.open .sheet.detail-sheet {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
 
 .sheet-backdrop ~ .sheet.detail-sheet .sheet-content {
   flex: 1 1 auto;
@@ -1157,19 +1166,19 @@ html, body {
   }
   .sheet-overlay.open .sheet { transform: translateX(-50%) translateY(0); }
 
-  /* Full-screen detail modal on desktop too — overrides the centered-card base.
-     Hidden off-screen by default; slides in only when the overlay is .open. */
+  /* Detail popup on desktop — a touch wider, but still a centered floating card
+     (NOT full-screen). Keeps the spring-pop entrance from the base rule. */
   .sheet.detail-sheet {
-    top: 0; left: 0; right: 0; bottom: 0;
-    width: 100%;
-    max-width: 100%;
-    height: 100%;
-    max-height: 100%;
+    width: 620px;
+    max-width: calc(100vw - 48px);
+    max-height: 88vh;
     margin-bottom: 0;
-    border-radius: 0;
-    transform: translateY(100%);
+    border-radius: 20px;
+    transform: translate(-50%, -50%) scale(0.92);
   }
-  .sheet-overlay.open .sheet.detail-sheet { transform: translateY(0); }
+  .sheet-overlay.open .sheet.detail-sheet {
+    transform: translate(-50%, -50%) scale(1);
+  }
 
   /* Submit sheet stays as right sidebar on desktop */
   .submit-sheet {
@@ -1602,7 +1611,7 @@ textarea::placeholder { color: var(--text-3); }
   position: relative;
   background:
     linear-gradient(160deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 40%, transparent 100%),
-    rgba(18, 23, 30, 0.96);
+    #12171e;
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 16px;
   overflow: hidden;
@@ -1676,7 +1685,7 @@ textarea::placeholder { color: var(--text-3); }
   justify-content: space-between;
   padding: 14px 20px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
-  background: rgba(13, 17, 23, 0.92);
+  background: #0d1117;
 }
 .dp-modal-title {
   font-size: 14px;
@@ -3090,21 +3099,44 @@ textarea::placeholder { color: var(--text-3); }
   background: rgba(0,0,0,0.35);
 }
 .detail-carousel-fallback {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
   height: 200px;
   color: var(--text-3);
+  overflow: hidden;
 }
-.detail-carousel-fallback svg { opacity: 0.5; }
+/* Soft diagonal shimmer so the empty state feels designed, not broken. */
+.detail-carousel-fallback::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,0.05) 50%, transparent 65%);
+  background-size: 220% 100%;
+  animation: fallback-shimmer 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes fallback-shimmer {
+  0%   { background-position: 130% 0; }
+  100% { background-position: -130% 0; }
+}
+.detail-carousel-fallback svg {
+  opacity: 0.55;
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.4));
+}
 .detail-carousel-fallback-text {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  opacity: 0.75;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  opacity: 0.7;
   color: var(--text-2);
+}
+@media (prefers-reduced-motion: reduce) {
+  .detail-carousel-fallback::after { animation: none; }
 }
 .detail-carousel-audio {
   display: flex;
@@ -4409,7 +4441,7 @@ textarea::placeholder { color: var(--text-3); }
   position: relative;
   width: 100%;
   height: 100%;
-  background: #070a0e;
+  background: #0a1228;   /* navy floor around the globe (not black) */
   overflow: hidden;
   border: none;
 }

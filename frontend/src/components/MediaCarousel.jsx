@@ -63,8 +63,8 @@ export default function MediaCarousel({ photo, media, onImageClick, category }) 
           </div>
         ) : imgFailed[idx] ? (
           <div className="detail-carousel-fallback" style={{ background: CAT_GRADIENTS[cat] || CAT_GRADIENTS.other }}>
-            <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.35"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-            <span className="detail-carousel-fallback-text">No photo available</span>
+            <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            <span className="detail-carousel-fallback-text">Photo unavailable</span>
           </div>
         ) : (
           <img

@@ -24,8 +24,13 @@ function useIsVisible(ref) {
 }
 
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
-const GLOBE_CENTER = [121.035, 14.565]; // Metro Manila
-const GLOBE_ZOOM = 3.2;
+const GLOBE_CENTER = [121.02, 14.60]; // Metro Manila
+const GLOBE_ZOOM = 9.4;               // zoomed onto Metro Manila only
+// Keep the view locked over Metro Manila — never drift away across the globe.
+const MM_BOUNDS = [
+  [120.82, 14.30], // SW
+  [121.20, 14.85], // NE
+];
 
 export default function LiveMapPreview({ onEnter }) {
   const containerRef = useRef(null);
@@ -45,33 +50,32 @@ export default function LiveMapPreview({ onEnter }) {
       style: STYLE_URL,
       center: GLOBE_CENTER,
       zoom: GLOBE_ZOOM,
+      pitch: 45,
+      bearing: 0,
       projection: 'globe',
       interactive: false,
       attributionControl: false,
       antialias: true,
+      maxBounds: MM_BOUNDS,   // hard-lock the view to Metro Manila
     });
     mapRef.current = map;
 
     map.on('load', async () => {
-      // Atmospheric glow around the globe.
+      // Navy atmosphere/floor around the globe (not black).
       map.setFog({
         range: [0.8, 8],
-        color: '#0a0e13',
-        'high-color': '#111827',
-        'space-color': '#000000',
-        'horizon-blend': 0.1,
+        color: '#101a33',
+        'high-color': '#1e3a6e',
+        'space-color': '#0a1228',
+        'horizon-blend': 0.12,
       });
 
-      // Slow 3D globe rotation (pauses via pauseRef when hero is off-screen).
-      let angle = 0;
+      // Gentle orbit around Metro Manila — the camera slowly rotates its bearing
+      // while staying centered on the metro (pauses when hero is off-screen).
       const rotate = () => {
         if (!mapRef.current) return;
         if (!pauseRef.current) {
-          map.setCenter([
-            GLOBE_CENTER[0] + angle,
-            GLOBE_CENTER[1] + Math.sin(angle * 0.3) * 2,
-          ]);
-          angle += 0.005;
+          map.setBearing((map.getBearing() + 0.04) % 360);
         }
         driftRef.current = requestAnimationFrame(rotate);
       };
