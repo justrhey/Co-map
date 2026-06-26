@@ -111,11 +111,6 @@ export default function LiveMapPreview({ onEnter }) {
     >
       <div ref={containerRef} className="live-map-canvas" />
 
-      {/* Hover affordance — it's the real app behind the glass. */}
-      <div className="live-map-overlay">
-        <span className="live-map-cta">Open the live map →</span>
-      </div>
-
       <div className="map-preview-bar">
         <span className="map-preview-bar-text">
           <span className="live-dot" /> Live
