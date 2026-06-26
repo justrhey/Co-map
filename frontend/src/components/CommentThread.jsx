@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { fetchComments, postComment, isLoggedIn } from '../api';
+import { fetchCachedComments, postComment, isLoggedIn } from '../api';
 import { timeAgo } from '../utils/time';
 
 // Pulsing placeholder that mirrors a real comment's shape so the layout
@@ -52,8 +52,8 @@ export default function CommentThread({ complaintId, enabled, fullHeight = false
   useEffect(() => {
     let active = true;
     setLoading(true);
-    fetchComments(complaintId)
-      .then(data => { if (active) setComments(Array.isArray(data) ? data : []); })
+    fetchCachedComments(complaintId)
+      .then(({ data }) => { if (active) setComments(Array.isArray(data) ? data : []); })
       .catch(() => { if (active) setComments([]); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };

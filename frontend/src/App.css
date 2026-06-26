@@ -4983,3 +4983,22 @@ textarea::placeholder { color: var(--text-3); }
   .lp-footer { padding: 12px 16px; flex-direction: column; gap: 4px; }
   .bw-cta-section { padding: 48px 16px; }
 }
+
+/* ── Loading screens (Suspense fallback) ── */
+.page-loading,
+.map-loading-placeholder {
+  position: fixed; inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--bg, #0d1117);
+  color: var(--text-2, #8b949e);
+  font-size: 13px;
+  z-index: 100;
+}
+.map-loading-placeholder {
+  position: absolute;
+  background: transparent;
+  pointer-events: none;
+}

@@ -200,3 +200,96 @@ export async function fetchComments(complaintId) {
 export async function postComment(complaintId, body, parent = null) {
   return apiFetch(`/complaints/${complaintId}/comments/`, { method: 'POST', json: parent ? { body, parent } : { body } });
 }
+
+// ── Client-side cache (stale-while-revalidate) ─────────────────────
+// Keeps responses fresh up to TTL ms; serves stale data while refetching
+// in the background. Deduplicates in-flight requests by key.
+const _cache = new Map();
+const _inflight = new Map();  // key → Promise (dedup)
+
+/**
+ * Thin cache wrapper — wraps any async function with SWR semantics.
+ * Rather than modifying each fetch function, hoist cache calls right
+ * before the fetch so public API endpoints opt in naturally.
+ *
+ * @param {string} key   Unique cache key (URL + params)
+ * @param {()=>Promise<any>} fetcher  The real async fetch
+ * @param {number} ttl   Freshness TTL in ms  (default 30_000 = 30s)
+ * @returns {Promise<{data:any, stale:boolean}>}
+ */
+async function cacheFetch(key, fetcher, ttl = 30_000) {
+  const now = Date.now();
+  const entry = _cache.get(key);
+
+  // Serve fresh cache immediately.
+  if (entry && now < entry.expires) {
+    return { data: entry.data, stale: false };
+  }
+
+  // Deduplicate in-flight requests.
+  if (_inflight.has(key)) {
+    const data = await _inflight.get(key);
+    return { data, stale: false };
+  }
+
+  // Stale data available — refetch in background.
+  if (entry) {
+    const promise = fetcher().catch(() => {});
+    _inflight.set(key, promise);
+    promise.then((data) => {
+      _inflight.delete(key);
+      if (data !== undefined) {
+        _cache.set(key, { data, expires: now + ttl });
+      }
+    }).catch(() => _inflight.delete(key));
+    return { data: entry.data, stale: true };
+  }
+
+  // Nothing cached — fetch fresh.
+  const promise = fetcher().catch((e) => { _inflight.delete(key); throw e; });
+  _inflight.set(key, promise);
+  try {
+    const data = await promise;
+    _cache.set(key, { data, expires: now + ttl });
+    return { data, stale: false };
+  } finally {
+    _inflight.delete(key);
+  }
+}
+
+// Pre-configured cache wrappers for common endpoints.
+const CACHE_TTL = {
+  complaints: 30_000,         // 30 s — data moves quickly
+  scores: 300_000,            // 5 min — health scores are stable
+  static: 86_400_000,         // 24 h — essentially immutable
+};
+
+/** Public complaint list (non-auth'd, used by Landing + maps) */
+let _cachedFetchComplaints = null;
+export async function fetchCachedComplaints(params = {}) {
+  const key = `complaints:${JSON.stringify(params)}`;
+  return cacheFetch(key, () => fetchComplaints(params), CACHE_TTL.complaints);
+}
+
+/** Public summary — landing page stats */
+let _cachedSummary = null;
+export async function fetchCachedSummary() {
+  const key = 'public-summary';
+  return cacheFetch(key, async () => {
+    const res = await fetch('/api/public/summary/');
+    return res.ok ? res.json() : null;
+  }, CACHE_TTL.scores);
+}
+
+/** Barangay scores — stable, 5-min cache */
+let _cachedScores = null;
+export async function fetchCachedBarangayScores() {
+  const key = 'barangay-scores';
+  return cacheFetch(key, () => fetchBarangayScores(), CACHE_TTL.scores);
+}
+
+/** Comments — 1-min cache (stale data fine for browsing) */
+export async function fetchCachedComments(complaintId) {
+  const key = `comments:${complaintId}`;
+  return cacheFetch(key, () => fetchComments(complaintId), CACHE_TTL.complaints * 2);
+}

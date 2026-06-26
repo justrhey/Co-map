@@ -1,45 +1,83 @@
 /**
- * LiveMapPreview — a small, non-interactive instance of the *real* map,
- * showing *real* complaints from the API. Used on the landing page so the
- * hero preview is the actual product, not a mockup. Clicking it enters the
- * full map experience.
+ * LiveMapPreview — a 3D globe on the landing page hero showing *real*
+ * complaints from the API. Rotates slowly as a premium showcase.
+ * Clicking it enters the full map experience.
  */
 import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
-import { fetchComplaints } from '../api';
+import { fetchCachedComplaints } from '../api';
+
+/* ── IntersectionObserver: only renders + animates when visible ── */
+function useIsVisible(ref) {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { setVisible(entry.isIntersecting); },
+      { threshold: 0 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [ref]);
+  return visible;
+}
 
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
-const PREVIEW_CENTER = [121.035, 14.565]; // Metro Manila
-const PREVIEW_ZOOM = 11.2;
+const GLOBE_CENTER = [121.035, 14.565]; // Metro Manila
+const GLOBE_ZOOM = 3.2;
 
 export default function LiveMapPreview({ onEnter }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
+  const driftRef = useRef(null);
+  const pauseRef = useRef(true);
   const [count, setCount] = useState(null);
+  const visible = useIsVisible(containerRef);
 
+  // Sync visibility to a ref so the rAF callback can read it synchronously.
+  useEffect(() => { pauseRef.current = !visible; }, [visible]);
+
+  // Create the map once (not on every visibility change).
   useEffect(() => {
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: STYLE_URL,
-      center: PREVIEW_CENTER,
-      zoom: PREVIEW_ZOOM,
-      interactive: false, // no scroll-jacking on the landing page
+      center: GLOBE_CENTER,
+      zoom: GLOBE_ZOOM,
+      projection: 'globe',
+      interactive: false,
       attributionControl: false,
+      antialias: true,
     });
     mapRef.current = map;
 
     map.on('load', async () => {
-      // Slow ambient drift so the preview feels alive.
-      let bearing = 0;
-      const drift = () => {
-        if (!mapRef.current) return;
-        bearing = (bearing + 0.02) % 360;
-        map.setBearing(bearing);
-        requestAnimationFrame(drift);
-      };
-      drift();
+      // Atmospheric glow around the globe.
+      map.setFog({
+        range: [0.8, 8],
+        color: '#0a0e13',
+        'high-color': '#111827',
+        'space-color': '#000000',
+        'horizon-blend': 0.1,
+      });
 
-      // Clustered source of REAL complaints.
+      // Slow 3D globe rotation (pauses via pauseRef when hero is off-screen).
+      let angle = 0;
+      const rotate = () => {
+        if (!mapRef.current) return;
+        if (!pauseRef.current) {
+          map.setCenter([
+            GLOBE_CENTER[0] + angle,
+            GLOBE_CENTER[1] + Math.sin(angle * 0.3) * 2,
+          ]);
+          angle += 0.005;
+        }
+        driftRef.current = requestAnimationFrame(rotate);
+      };
+      driftRef.current = requestAnimationFrame(rotate);
+
+      // Clustered source of REAL complaints (shown as glowing pins).
       map.addSource('preview-complaints', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
@@ -52,10 +90,10 @@ export default function LiveMapPreview({ onEnter }) {
         source: 'preview-complaints',
         filter: ['has', 'point_count'],
         paint: {
-          'circle-color': 'rgba(255,255,255,0.85)',
-          'circle-stroke-color': 'rgba(0,0,0,0.15)',
+          'circle-color': 'rgba(255,90,95,0.9)',
+          'circle-stroke-color': 'rgba(255,255,255,0.4)',
           'circle-stroke-width': 1.5,
-          'circle-radius': ['step', ['get', 'point_count'], 12, 10, 18, 50, 26],
+          'circle-radius': ['step', ['get', 'point_count'], 10, 10, 16, 50, 22],
         },
       });
       map.addLayer({
@@ -63,8 +101,8 @@ export default function LiveMapPreview({ onEnter }) {
         type: 'symbol',
         source: 'preview-complaints',
         filter: ['has', 'point_count'],
-        layout: { 'text-field': '{point_count_abbreviated}', 'text-font': ['Noto Sans Regular'], 'text-size': 11 },
-        paint: { 'text-color': '#0d1117' },
+        layout: { 'text-field': '{point_count_abbreviated}', 'text-font': ['Noto Sans Regular'], 'text-size': 10 },
+        paint: { 'text-color': '#ffffff' },
       });
       map.addLayer({
         id: 'preview-points',
@@ -73,14 +111,14 @@ export default function LiveMapPreview({ onEnter }) {
         filter: ['!', ['has', 'point_count']],
         paint: {
           'circle-color': '#ff5a5f',
-          'circle-radius': 5,
-          'circle-stroke-color': '#fff',
-          'circle-stroke-width': 1.5,
+          'circle-radius': 4,
+          'circle-stroke-color': 'rgba(255,255,255,0.6)',
+          'circle-stroke-width': 1,
         },
       });
 
       try {
-        const data = await fetchComplaints({ page: '1' });
+        const { data } = await fetchCachedComplaints({ page: '1' });
         const rows = data.results || [];
         setCount(data.count ?? rows.length);
         const features = rows
@@ -97,7 +135,11 @@ export default function LiveMapPreview({ onEnter }) {
       }
     });
 
-    return () => { map.remove(); mapRef.current = null; };
+    return () => {
+      if (driftRef.current) cancelAnimationFrame(driftRef.current);
+      map.remove();
+      mapRef.current = null;
+    };
   }, []);
 
   return (

@@ -1,23 +1,28 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { fetchComplaints, fetchBarangayScores, fetchUserStats, fetchMe, logout as apiLogout, setToken, isLoggedIn } from './api';
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
+import { fetchComplaints, fetchCachedComplaints, fetchCachedBarangayScores, fetchUserStats, fetchMe, logout as apiLogout, setToken, isLoggedIn } from './api';
 import { BADGE_ICONS } from './utils/badges';
-import MapView from './components/MapView';
-import DragManDock from './components/DragManDock';
-import AreaInfo from './components/AreaInfo';
-import AnalysisPanel from './components/AnalysisPanel';
-import SearchBar from './components/SearchBar';
-import HomePage from './components/HomePage';
-import LoginPage from './components/LoginPage';
+
+// Components loaded on every page (small, always needed).
 import FilterBar from './components/FilterBar';
-import BottomCard from './components/BottomCard';
-import HotspotPanel from './components/HotspotPanel';
-import SubmitSheet from './components/SubmitSheet';
-import DetailSheet from './components/DetailSheet';
-import ProfileSheet from './components/ProfileSheet';
-import AdminSheet from './components/AdminSheet';
 import Toast from './components/Toast';
 import ConfirmDialog from './components/ConfirmDialog';
-import './App.css';
+
+// Heavy / page-specific components are lazy-loaded so the initial bundle
+// stays lean. MapLibre GL (~700 KB) only downloads when the user visits
+// the map or the landing page hero.
+const HomePage = lazy(() => import('./components/HomePage'));
+const LoginPage = lazy(() => import('./components/LoginPage'));
+const MapView = lazy(() => import('./components/MapView'));
+const DragManDock = lazy(() => import('./components/DragManDock'));
+const AreaInfo = lazy(() => import('./components/AreaInfo'));
+const AnalysisPanel = lazy(() => import('./components/AnalysisPanel'));
+const SearchBar = lazy(() => import('./components/SearchBar'));
+const BottomCard = lazy(() => import('./components/BottomCard'));
+const HotspotPanel = lazy(() => import('./components/HotspotPanel'));
+const SubmitSheet = lazy(() => import('./components/SubmitSheet'));
+const DetailSheet = lazy(() => import('./components/DetailSheet'));
+const ProfileSheet = lazy(() => import('./components/ProfileSheet'));
+const AdminSheet = lazy(() => import('./components/AdminSheet'));
 
 // ── Category colors (exported for HotspotPanel) ────────────────
 export const CAT_COLORS = {
@@ -124,12 +129,13 @@ export default function App() {
   }, []);
 
   // ── Data fetching ──
-  const loadData = useCallback(async (spatial = null) => {
+  const loadData = useCallback(async (spatial = null, forceFresh = false) => {
     try {
       setLoadError(null);
       const params = { page: '1', ...(activeFilter !== 'all' ? { category: activeFilter } : {}) };
       if (spatial) Object.assign(params, spatial);
-      const data = await fetchComplaints(params);
+      const fetcher = forceFresh ? fetchComplaints : (p) => fetchCachedComplaints(p).then(r => r.data);
+      const data = await fetcher(params);
       setComplaints(data.results || []);
       setDataLoaded(true);
     } catch (err) {
@@ -181,11 +187,11 @@ export default function App() {
   // ── Side effects ──
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3000); return () => clearTimeout(t); }, [toast]);
   useEffect(() => { fetchUserStats().then(setUserStats).catch(() => {}); }, [user]);
-  useEffect(() => { fetchBarangayScores().then(setHealthData).catch(() => {}); }, []);
+  useEffect(() => { fetchCachedBarangayScores().then(({ data }) => setHealthData(data)).catch(() => {}); }, []);
   useEffect(() => {
     if (!submitOpen) {
       fetchUserStats().then(setUserStats).catch(() => {});
-      fetchBarangayScores().then(setHealthData).catch(() => {});
+      fetchCachedBarangayScores().then(({ data }) => setHealthData(data)).catch(() => {});
     }
   }, [submitOpen]);
 
@@ -227,7 +233,7 @@ export default function App() {
 
   const handleSubmitClose = () => { setSubmitOpen(false); setSubmitLatLng(null); };
   const handleSubmitSuccess = () => {
-    loadData();
+    loadData(null, true);  // force fresh fetch after new report
     setSubmitOpen(false);
     setSubmitLatLng(null);
     setToast({ message: 'Report submitted!', type: 'success' });
@@ -237,8 +243,10 @@ export default function App() {
 
   return (
     <div className="app">
-      {page === 'home' && <HomePage onNavigate={setPage} />}
-      {page === 'login' && <LoginPage onLogin={handleLogin} onBack={() => setPage('map')} />}
+      <Suspense fallback={<div className="page-loading"><span className="spinner" /></div>}>
+        {page === 'home' && <HomePage onNavigate={setPage} />}
+        {page === 'login' && <LoginPage onLogin={handleLogin} onBack={() => setPage('map')} />}
+      </Suspense>
 
       {page === 'map' && (
         <>
@@ -248,7 +256,9 @@ export default function App() {
                 <h1 className="app-title" onClick={() => setPage('home')} style={{ cursor: 'pointer' }}>
                   <img src="/logo_com.jpeg" alt="" className="brand-logo" /> Co-Map
                 </h1>
-                {mapInstance && <SearchBar map={mapInstance} />}
+                <Suspense fallback={null}>
+                  {mapInstance && <SearchBar map={mapInstance} />}
+                </Suspense>
                 {user ? (
                   <div className="user-badge">
                     {userStats?.level && (
@@ -294,7 +304,7 @@ export default function App() {
                 </div>
               )}
             </header>
-            <FilterBar active={activeFilter} onChange={setActiveFilter} counts={counts} total={complaints.length} error={loadError} onRetry={() => loadData()} loaded={dataLoaded} />
+            <FilterBar active={activeFilter} onChange={setActiveFilter} counts={counts} total={complaints.length} error={loadError} onRetry={() => loadData(null, true)} loaded={dataLoaded} />
             <div className="map-toggles">
               <button className={`toggle-pill${showCoolSpots ? ' active' : ''}`} onClick={() => setShowCoolSpots(v => !v)}>
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Spots
@@ -308,22 +318,28 @@ export default function App() {
             </div>
           </div>
 
-          <HotspotPanel analytics={analytics} healthScore={healthData?.overall?.score ?? null} openCount={healthData?.overall?.open ?? 0} resolvedCount={healthData?.overall?.resolved ?? 0} />
-          <MapView complaints={complaints} showCoolSpots={showCoolSpots} onMarkerClick={handleMarkerClick} onCenterChange={setCenterLatLng} onMapReady={setMapInstance} reportPin={reportPin} />
-          <AreaInfo visible={showAreaInfo} center={centerLatLng} />
-          {mapInstance && <DragManDock map={mapInstance} onPlace={setReportPin} />}
-          {isLoggedIn() && !submitOpen && reportPin && <BottomCard latlng={reportPin} onReport={handleReport} />}
-          {!submitOpen && !detailOpen && !profileOpen && (
-            <button className="report-fab" onClick={handleFabReport} aria-label="Report an issue here">
-              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
-              <span className="report-fab-label">Report</span>
-            </button>
-          )}
-          <SubmitSheet open={submitOpen} latlng={submitLatLng} onClose={handleSubmitClose} onSubmit={handleSubmitSuccess} onLoginRequired={() => setPage('login')} setToast={setToast} />
-          <DetailSheet open={detailOpen} complaintId={detailId} onClose={() => { setDetailOpen(false); setDetailId(null); }} />
-          <ProfileSheet open={profileOpen} onClose={() => setProfileOpen(false)} />
-          <AdminSheet open={adminOpen} onClose={() => setAdminOpen(false)} onStatusChange={() => loadData()} setToast={setToast} />
-          <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} />
+          <Suspense fallback={<div className="map-loading-placeholder"><span className="spinner" /> Loading map…</div>}>
+            <HotspotPanel analytics={analytics} healthScore={healthData?.overall?.score ?? null} openCount={healthData?.overall?.open ?? 0} resolvedCount={healthData?.overall?.resolved ?? 0} />
+            <MapView complaints={complaints} showCoolSpots={showCoolSpots} onMarkerClick={handleMarkerClick} onCenterChange={setCenterLatLng} onMapReady={setMapInstance} reportPin={reportPin} />
+            <AreaInfo visible={showAreaInfo} center={centerLatLng} />
+            {mapInstance && <DragManDock map={mapInstance} onPlace={setReportPin} />}
+          </Suspense>
+
+          <Suspense fallback={null}>
+            {isLoggedIn() && !submitOpen && reportPin && <BottomCard latlng={reportPin} onReport={handleReport} />}
+            {!submitOpen && !detailOpen && !profileOpen && (
+              <button className="report-fab" onClick={handleFabReport} aria-label="Report an issue here">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+                <span className="report-fab-label">Report</span>
+              </button>
+            )}
+            <SubmitSheet open={submitOpen} latlng={submitLatLng} onClose={handleSubmitClose} onSubmit={handleSubmitSuccess} onLoginRequired={() => setPage('login')} setToast={setToast} />
+            <DetailSheet open={detailOpen} complaintId={detailId} onClose={() => { setDetailOpen(false); setDetailId(null); }} />
+            <ProfileSheet open={profileOpen} onClose={() => setProfileOpen(false)} />
+            <AdminSheet open={adminOpen} onClose={() => setAdminOpen(false)} onStatusChange={() => loadData(null, true)} setToast={setToast} />
+            <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} />
+          </Suspense>
+
           <ConfirmDialog open={confirmSignOut} title="Sign out?" message="Do you want to sign out? You'll need to sign in again to submit or track reports." confirmLabel="Sign Out" cancelLabel="Stay signed in" danger onConfirm={handleLogout} onCancel={() => setConfirmSignOut(false)} />
           <Toast message={toast?.message} type={toast?.type} />
         </>
