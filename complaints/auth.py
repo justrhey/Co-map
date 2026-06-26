@@ -233,6 +233,58 @@ class MeView(generics.GenericAPIView):
         })
 
 
+class AccountView(generics.GenericAPIView):
+    """Self-service account management for the signed-in user.
+
+    PATCH  — update display name.
+    DELETE — permanently delete the account and all owned reports.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, *args, **kwargs):
+        user = request.user
+        name = (request.data.get('name') or '').strip()
+        if not name:
+            return Response({'error': 'Name cannot be empty.'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(name) > 60:
+            return Response({'error': 'Name is too long (max 60 characters).'}, status=status.HTTP_400_BAD_REQUEST)
+        if contains_profanity(name):
+            return Response({'error': 'Please choose a different name.'}, status=status.HTTP_400_BAD_REQUEST)
+        user.first_name = name
+        user.save(update_fields=['first_name'])
+        return Response({'name': user.first_name, 'email': user.email, 'is_staff': user.is_staff})
+
+    def delete(self, request, *args, **kwargs):
+        user = request.user
+        # Drop the auth token first so the session is dead even if delete races.
+        Token.objects.filter(user=user).delete()
+        user.delete()  # cascades to owned complaints, votes, comments
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ChangePasswordView(generics.GenericAPIView):
+    """Change the signed-in user's password. Requires the current password."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        current = request.data.get('current_password') or ''
+        new = request.data.get('new_password') or ''
+
+        # Social-only accounts may have no usable password set.
+        if user.has_usable_password() and not user.check_password(current):
+            return Response({'error': 'Your current password is incorrect.'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(new) < 8:
+            return Response({'error': 'New password must be at least 8 characters.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new)
+        user.save(update_fields=['password'])
+        # Rotate the token so other sessions are signed out.
+        Token.objects.filter(user=user).delete()
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response({'detail': 'password_changed', 'token': token.key})
+
+
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
 def social_auth_urls(request):

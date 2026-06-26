@@ -1,22 +1,46 @@
 import { useState, useEffect } from 'react';
-import { fetchUserProfile } from '../api';
+import {
+  fetchUserProfile, updateComplaint, deleteComplaint,
+  updateAccountName, changePassword, deleteAccount,
+} from '../api';
 import { BADGE_ICONS } from '../utils/badges';
 import { getCategoryIcon } from './Icons';
-export default function ProfileSheet({ open, onClose }) {
+import ConfirmDialog from './ConfirmDialog';
+
+const STATUS_LABELS = { pending: 'Pending', approved: 'Approved', resolved: 'Resolved' };
+const STATUS_ORDER = ['pending', 'approved', 'resolved'];
+
+export default function ProfileSheet({ open, onClose, user, onUserUpdate, onReportsChanged, onAccountDeleted, setToast }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [tab, setTab] = useState('overview');     // overview | reports | settings
+  const [reports, setReports] = useState([]);      // local mirror so edits/deletes reflect instantly
+  const [busyId, setBusyId] = useState(null);      // report id mid-action
+  const [confirm, setConfirm] = useState(null);    // { kind, id } for destructive actions
+  const [editing, setEditing] = useState(null);    // report being edited (inline form)
+
+  // Settings form state
+  const [name, setName] = useState('');
+  const [savingName, setSavingName] = useState(false);
+  const [pw, setPw] = useState({ current: '', next: '' });
+  const [savingPw, setSavingPw] = useState(false);
 
   useEffect(() => {
-    if (!open) { setProfile(null); return; }
+    if (!open) { setProfile(null); setTab('overview'); setEditing(null); setConfirm(null); return; }
     setLoading(true);
-    fetchUserProfile().then(setProfile).catch(() => setProfile(null)).finally(() => setLoading(false));
-  }, [open]);
+    fetchUserProfile()
+      .then((data) => { setProfile(data); setReports(data?.reports || []); })
+      .catch(() => setProfile(null))
+      .finally(() => setLoading(false));
+    setName(user?.name || '');
+  }, [open, user]);
+
+  const toast = (message, type = 'success') => setToast?.({ message, type });
 
   const gradeColor = (g) => {
     if (!g) return 'var(--text-3)';
     return g === 'A' ? '#c0c6d0' : g === 'B' ? '#9ea6b2' : g === 'C' ? '#8b949e' : g === 'D' ? '#6b7280' : '#484f58';
   };
-
   const gradeLabel = (total) => {
     if (total == null) return '--';
     if (total >= 90) return 'Excellent';
@@ -24,6 +48,88 @@ export default function ProfileSheet({ open, onClose }) {
     if (total >= 70) return 'Good';
     if (total >= 60) return 'Fair';
     return 'Needs improvement';
+  };
+
+  // ── Report actions ──
+  const cycleStatus = async (r) => {
+    const next = STATUS_ORDER[(STATUS_ORDER.indexOf(r.status) + 1) % STATUS_ORDER.length];
+    setBusyId(r.id);
+    try {
+      await updateComplaint(r.id, { status: next });
+      setReports((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: next } : x)));
+      toast(`Marked “${r.category_display}” as ${STATUS_LABELS[next]}`);
+      onReportsChanged?.();
+    } catch (e) {
+      toast(e.message || 'Could not update status', 'error');
+    } finally { setBusyId(null); }
+  };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    setBusyId(editing.id);
+    try {
+      const updated = await updateComplaint(editing.id, {
+        description: editing.description,
+        impact: editing.impact,
+        action_requested: editing.action_requested,
+      });
+      setReports((prev) => prev.map((x) => (x.id === editing.id ? { ...x, ...updated } : x)));
+      setEditing(null);
+      toast('Report updated');
+      onReportsChanged?.();
+    } catch (e) {
+      toast(e.message || 'Could not save changes', 'error');
+    } finally { setBusyId(null); }
+  };
+
+  const doDelete = async (id) => {
+    setBusyId(id);
+    try {
+      await deleteComplaint(id);
+      setReports((prev) => prev.filter((x) => x.id !== id));
+      setConfirm(null);
+      toast('Report deleted');
+      onReportsChanged?.();
+    } catch (e) {
+      toast(e.message || 'Could not delete report', 'error');
+    } finally { setBusyId(null); }
+  };
+
+  // ── Account actions ──
+  const saveName = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) { toast('Name cannot be empty', 'error'); return; }
+    setSavingName(true);
+    try {
+      const res = await updateAccountName(trimmed);
+      onUserUpdate?.({ name: res.name });
+      toast('Name updated');
+    } catch (e) {
+      toast(e.message || 'Could not update name', 'error');
+    } finally { setSavingName(false); }
+  };
+
+  const savePassword = async () => {
+    if (pw.next.length < 8) { toast('New password must be at least 8 characters', 'error'); return; }
+    setSavingPw(true);
+    try {
+      await changePassword(pw.current, pw.next);
+      setPw({ current: '', next: '' });
+      toast('Password changed');
+    } catch (e) {
+      toast(e.message || 'Could not change password', 'error');
+    } finally { setSavingPw(false); }
+  };
+
+  const doDeleteAccount = async () => {
+    try {
+      await deleteAccount();
+      setConfirm(null);
+      toast('Your account has been deleted');
+      onAccountDeleted?.();
+    } catch (e) {
+      toast(e.message || 'Could not delete account', 'error');
+    }
   };
 
   return (
@@ -40,124 +146,197 @@ export default function ProfileSheet({ open, onClose }) {
                 <h3>Your Profile</h3>
               </div>
 
-              {/* Level & XP Card */}
-              <div className="profile-level-card">
-                <div className="profile-level-badge">
-                  <span className="profile-level-num">{profile.level?.level || 1}</span>
-                </div>
-                <div className="profile-level-body">
-                  <span className="profile-level-title">
-                    Level {profile.level?.level || 1}
-                  </span>
-                  <div className="profile-xp-bar-bg">
-                    <div className="profile-xp-bar" style={{ width: `${profile.level?.progress || 0}%` }} />
-                  </div>
-                  <span className="profile-xp-text">
-                    {profile.total_xp || 0} XP · {profile.level?.progress || 0}% to Level {(profile.level?.level || 1) + 1}
-                  </span>
-                </div>
+              {/* Tabs */}
+              <div className="profile-tabs">
+                {['overview', 'reports', 'settings'].map((t) => (
+                  <button
+                    key={t}
+                    className={`profile-tab${tab === t ? ' active' : ''}`}
+                    onClick={() => setTab(t)}
+                  >
+                    {t === 'overview' ? 'Overview' : t === 'reports' ? `Reports${reports.length ? ` · ${reports.length}` : ''}` : 'Settings'}
+                  </button>
+                ))}
               </div>
 
-              {profile.credibility && (
-                <div className="profile-cred-card">
-                  <div className="profile-cred-grade" style={{ color: gradeColor(profile.credibility.grade), borderColor: gradeColor(profile.credibility.grade) }}>
-                    {profile.credibility.grade || '-'}
+              {/* ─────────── OVERVIEW ─────────── */}
+              {tab === 'overview' && (
+                <>
+                  <div className="profile-level-card">
+                    <div className="profile-level-badge">
+                      <span className="profile-level-num">{profile.level?.level || 1}</span>
+                    </div>
+                    <div className="profile-level-body">
+                      <span className="profile-level-title">Level {profile.level?.level || 1}</span>
+                      <div className="profile-xp-bar-bg">
+                        <div className="profile-xp-bar" style={{ width: `${profile.level?.progress || 0}%` }} />
+                      </div>
+                      <span className="profile-xp-text">
+                        {profile.total_xp || 0} XP · {profile.level?.progress || 0}% to Level {(profile.level?.level || 1) + 1}
+                      </span>
+                    </div>
                   </div>
-                  <div className="profile-cred-body">
-                    <span className="profile-cred-label">{profile.credibility.label}</span>
-                    <span className="profile-cred-sub">
-                      {profile.credibility.count > 0
-                        ? `Credibility ${profile.credibility.score}/100 · based on ${profile.credibility.count} report${profile.credibility.count > 1 ? 's' : ''}`
-                        : 'File quality reports to build your credibility'}
-                    </span>
-                  </div>
-                </div>
-              )}
 
-              <div className="profile-summary">
-                <div className="profile-stats">
-                  <div className="profile-stat">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                    <span className="profile-stat-val">{profile.total_reports}</span>
-                    <span className="profile-stat-label">Reports</span>
-                  </div>
-                  {profile.avg_score != null && (
-                    <div className="profile-stat">
-                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                      <span className="profile-stat-val">{profile.avg_score}</span>
-                      <span className="profile-stat-label">Avg</span>
+                  {profile.credibility && (
+                    <div className="profile-cred-card">
+                      <div className="profile-cred-grade" style={{ color: gradeColor(profile.credibility.grade), borderColor: gradeColor(profile.credibility.grade) }}>
+                        {profile.credibility.grade || '-'}
+                      </div>
+                      <div className="profile-cred-body">
+                        <span className="profile-cred-label">{profile.credibility.label}</span>
+                        <span className="profile-cred-sub">
+                          {profile.credibility.count > 0
+                            ? `Credibility ${profile.credibility.score}/100 · based on ${profile.credibility.count} report${profile.credibility.count > 1 ? 's' : ''}`
+                            : 'File quality reports to build your credibility'}
+                        </span>
+                      </div>
                     </div>
                   )}
-                  <div className="profile-stat">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-                    <span className="profile-stat-val">{profile.total_xp || 0}</span>
-                    <span className="profile-stat-label">Total XP</span>
-                  </div>
-                  <div className="profile-stat">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
-                    <span className="profile-stat-val">{profile.streak}</span>
-                    <span className="profile-stat-label">Streak</span>
-                  </div>
-                </div>
-              </div>
 
-              {profile.badges?.length > 0 && (
-                <div className="profile-section">
-                  <div className="profile-section-title">Earned Recognition</div>
-                  <div className="profile-badges">
-                    {profile.badges.map(b => (
-                      <div key={b.id} className="profile-badge">
-                        <div className="profile-badge-icon">
-                          {BADGE_ICONS[b.id] || <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/></svg>}
-                        </div>
-                        <div className="profile-badge-text">
-                          <span className="profile-badge-title">{b.title}</span>
-                          <span className="profile-badge-sub">{b.subtitle}</span>
-                        </div>
+                  <div className="profile-summary">
+                    <div className="profile-stats">
+                      <div className="profile-stat">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        <span className="profile-stat-val">{reports.length}</span>
+                        <span className="profile-stat-label">Reports</span>
                       </div>
-                    ))}
+                      {profile.avg_score != null && (
+                        <div className="profile-stat">
+                          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                          <span className="profile-stat-val">{profile.avg_score}</span>
+                          <span className="profile-stat-label">Avg</span>
+                        </div>
+                      )}
+                      <div className="profile-stat">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                        <span className="profile-stat-val">{profile.total_xp || 0}</span>
+                        <span className="profile-stat-label">Total XP</span>
+                      </div>
+                      <div className="profile-stat">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                        <span className="profile-stat-val">{profile.streak}</span>
+                        <span className="profile-stat-label">Streak</span>
+                      </div>
+                    </div>
                   </div>
+
+                  {profile.badges?.length > 0 && (
+                    <div className="profile-section">
+                      <div className="profile-section-title">Earned Recognition</div>
+                      <div className="profile-badges">
+                        {profile.badges.map((b) => (
+                          <div key={b.id} className="profile-badge">
+                            <div className="profile-badge-icon">
+                              {BADGE_ICONS[b.id] || <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/></svg>}
+                            </div>
+                            <div className="profile-badge-text">
+                              <span className="profile-badge-title">{b.title}</span>
+                              <span className="profile-badge-sub">{b.subtitle}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* ─────────── REPORTS (manage) ─────────── */}
+              {tab === 'reports' && (
+                <div className="profile-section">
+                  <div className="profile-section-title">Manage Your Reports</div>
+                  {reports.length === 0 ? (
+                    <p className="profile-empty">No reports yet. Tap the pin to submit your first.</p>
+                  ) : (
+                    <div className="profile-reports">
+                      {reports.map((r) => (
+                        <div key={r.id} className="pm-report">
+                          <div className="pm-report-head">
+                            <div className="profile-report-icon">{getCategoryIcon(r.category, 18)}</div>
+                            <div className="profile-report-body">
+                              <span className="profile-report-label">{r.category_display}</span>
+                              <span className="profile-report-date">
+                                {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </span>
+                            </div>
+                            <div className="profile-report-grade" style={{ color: gradeColor(r.score?.letter_grade) }}>
+                              {r.score?.letter_grade || '--'}
+                            </div>
+                          </div>
+
+                          {editing?.id === r.id ? (
+                            <div className="pm-edit">
+                              <label className="pm-edit-label">Situation</label>
+                              <textarea className="pm-edit-input" rows={2} value={editing.description || ''} onChange={(e) => setEditing({ ...editing, description: e.target.value })} />
+                              <label className="pm-edit-label">Impact</label>
+                              <textarea className="pm-edit-input" rows={2} value={editing.impact || ''} onChange={(e) => setEditing({ ...editing, impact: e.target.value })} />
+                              <label className="pm-edit-label">Action requested</label>
+                              <textarea className="pm-edit-input" rows={2} value={editing.action_requested || ''} onChange={(e) => setEditing({ ...editing, action_requested: e.target.value })} />
+                              <div className="pm-edit-actions">
+                                <button className="btn btn-ghost btn-sm" onClick={() => setEditing(null)} disabled={busyId === r.id}>Cancel</button>
+                                <button className="btn btn-primary btn-sm" onClick={saveEdit} disabled={busyId === r.id}>
+                                  {busyId === r.id ? <span className="spinner" /> : 'Save'}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="pm-actions">
+                              <button
+                                className={`pm-status-pill ${r.status}`}
+                                onClick={() => cycleStatus(r)}
+                                disabled={busyId === r.id}
+                                title="Tap to change status"
+                              >
+                                <span className="pm-status-dot" />
+                                {STATUS_LABELS[r.status]}
+                              </button>
+                              <button className="pm-action-btn" onClick={() => setEditing({ id: r.id, description: r.description, impact: r.impact, action_requested: r.action_requested })} disabled={busyId === r.id}>
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                Edit
+                              </button>
+                              <button className="pm-action-btn danger" onClick={() => setConfirm({ kind: 'report', id: r.id })} disabled={busyId === r.id}>
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
-              <div className="profile-section">
-                <div className="profile-section-title">Your Reports</div>
-                {profile.reports?.length === 0 ? (
-                  <p className="profile-empty">No reports yet. Tap the pin to submit your first.</p>
-                ) : (
-                  <div className="profile-reports">
-                    {profile.reports?.slice(0, 20).map(r => (
-                      <div key={r.id} className="profile-report">
-                        <div className="profile-report-icon">{getCategoryIcon(r.category, 18)}</div>
-                        <div className="profile-report-body">
-                          <span className="profile-report-label">{r.category_display}</span>
-                          <span className="profile-report-date">
-                            {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </span>
-                        </div>
-                        <div className="profile-report-grade" style={{ color: gradeColor(r.score?.letter_grade) }}>
-                          {r.score?.letter_grade || '--'}
-                        </div>
-                        <div className={`profile-report-status ${r.status}`} />
-                      </div>
-                    ))}
+              {/* ─────────── SETTINGS ─────────── */}
+              {tab === 'settings' && (
+                <>
+                  <div className="profile-section">
+                    <div className="profile-section-title">Display Name</div>
+                    <div className="pm-field-row">
+                      <input className="pm-edit-input" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder="Your name" />
+                      <button className="btn btn-primary btn-sm" onClick={saveName} disabled={savingName || name.trim() === (user?.name || '')}>
+                        {savingName ? <span className="spinner" /> : 'Save'}
+                      </button>
+                    </div>
                   </div>
-                )}
-              </div>
 
-              {profile.avg_score != null && (
-                <div className="profile-section">
-                  <div className="profile-section-title">Score Overview</div>
-                  <div className="profile-score-row">
-                    <div className="profile-score-circle">
-                      <span className="profile-score-num">{profile.avg_score}</span>
-                    </div>
-                    <div className="profile-score-info">
-                      <span className="profile-score-grade">{gradeLabel(profile.avg_score)}</span>
-                      <span className="profile-score-desc">Average across {profile.total_reports} reports</span>
-                    </div>
+                  <div className="profile-section">
+                    <div className="profile-section-title">Change Password</div>
+                    <input className="pm-edit-input pm-mb" type="password" autoComplete="current-password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} placeholder="Current password" />
+                    <input className="pm-edit-input pm-mb" type="password" autoComplete="new-password" value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} placeholder="New password (min 8 chars)" />
+                    <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={savePassword} disabled={savingPw || !pw.next}>
+                      {savingPw ? <span className="spinner" /> : 'Update Password'}
+                    </button>
                   </div>
-                </div>
+
+                  <div className="profile-section pm-danger-zone">
+                    <div className="profile-section-title danger">Danger Zone</div>
+                    <p className="pm-danger-note">Deleting your account permanently removes your profile and all of your reports. This cannot be undone.</p>
+                    <button className="btn btn-danger btn-sm" style={{ width: '100%' }} onClick={() => setConfirm({ kind: 'account' })}>
+                      Delete My Account
+                    </button>
+                  </div>
+                </>
               )}
 
               <div className="detail-close-bar">
@@ -169,6 +348,27 @@ export default function ProfileSheet({ open, onClose }) {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirm?.kind === 'report'}
+        title="Delete this report?"
+        message="This permanently removes the report and its photo. This cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Keep it"
+        danger
+        onConfirm={() => doDelete(confirm.id)}
+        onCancel={() => setConfirm(null)}
+      />
+      <ConfirmDialog
+        open={confirm?.kind === 'account'}
+        title="Delete your account?"
+        message="Your profile and every report you've filed will be permanently deleted. This cannot be undone."
+        confirmLabel="Delete account"
+        cancelLabel="Cancel"
+        danger
+        onConfirm={doDeleteAccount}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   );
 }

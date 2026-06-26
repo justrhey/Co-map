@@ -168,6 +168,35 @@ export async function updateComplaintStatus(id, data) {
   return apiFetch(`/complaints/${id}/status/`, { method: 'PATCH', json: data });
 }
 
+// ── Owner controls (edit / delete own report) ──────────────────
+// PATCH /complaints/:id/ — owner-only via IsOwnerOrStaffOrReadOnly. Owners may
+// edit content fields and set any status on their own report.
+export async function updateComplaint(id, data) {
+  return apiFetch(`/complaints/${id}/`, { method: 'PATCH', json: data });
+}
+
+export async function deleteComplaint(id) {
+  return apiFetch(`/complaints/${id}/`, { method: 'DELETE' });
+}
+
+// ── Account self-service ───────────────────────────────────────
+export async function updateAccountName(name) {
+  return apiFetch('/auth/account/', { method: 'PATCH', json: { name } });
+}
+
+export async function changePassword(currentPassword, newPassword) {
+  const data = await apiFetch('/auth/change-password/', {
+    method: 'POST', json: { current_password: currentPassword, new_password: newPassword },
+  });
+  if (data?.token) setToken(data.token); // server rotated the token
+  return data;
+}
+
+export async function deleteAccount() {
+  await apiFetch('/auth/account/', { method: 'DELETE' });
+  setToken(null);
+}
+
 export async function fetchAdminSummary() {
   return apiFetch('/public/admin/');
 }

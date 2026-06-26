@@ -439,6 +439,32 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         # Run scoring pipeline
         score_complaint(complaint)
 
+    def perform_update(self, serializer):
+        """Owner edit (PATCH /api/complaints/:id/). Object-level permission has
+        already confirmed the requester owns this report. If the status changed,
+        stamp the matching timestamp (mirrors the admin update_status action).
+        Re-score when the report's substantive content changed."""
+        old = serializer.instance
+        old_status = old.status
+        content_fields = {'description', 'impact', 'action_requested', 'category', 'custom_category'}
+        content_changed = any(
+            f in serializer.validated_data and serializer.validated_data[f] != getattr(old, f)
+            for f in content_fields
+        )
+
+        complaint = serializer.save()
+
+        new_status = complaint.status
+        if new_status != old_status:
+            if new_status == 'approved' and not complaint.acknowledged_at:
+                complaint.acknowledged_at = timezone.now()
+            elif new_status == 'resolved' and not complaint.resolved_at:
+                complaint.resolved_at = timezone.now()
+            complaint.save(update_fields=['acknowledged_at', 'resolved_at'])
+
+        if content_changed:
+            score_complaint(complaint)
+
     def get_queryset(self):
         qs = super().get_queryset()
         cat = self.request.query_params.get('category')
@@ -948,9 +974,16 @@ def user_profile(request):
 
     reports_data = ComplaintListSerializer(user_reports, many=True, context={'request': request}).data
 
-    # Add score data to each report
+    # Add score + editable content to each report. The list serializer omits the
+    # text fields (lighter map payload); the profile's "Manage reports" editor
+    # needs them, so attach from the queryset we already have in memory.
+    content_map = {
+        c.id: {'description': c.description, 'impact': c.impact, 'action_requested': c.action_requested}
+        for c in user_reports
+    }
     score_map = {s.complaint_id: s for s in scores}
     for r in reports_data:
+        r.update(content_map.get(r['id'], {}))
         s = score_map.get(r['id'])
         if s:
             r['score'] = {

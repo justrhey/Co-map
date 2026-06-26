@@ -322,7 +322,15 @@ export default function App() {
             {isLoggedIn() && !submitOpen && reportPin && <BottomCard latlng={reportPin} onReport={handleReport} />}
             <SubmitSheet open={submitOpen} latlng={submitLatLng} onClose={handleSubmitClose} onSubmit={handleSubmitSuccess} onLoginRequired={() => setPage('login')} setToast={setToast} />
             <DetailSheet open={detailOpen} complaintId={detailId} onClose={() => { setDetailOpen(false); setDetailId(null); }} />
-            <ProfileSheet open={profileOpen} onClose={() => setProfileOpen(false)} />
+            <ProfileSheet
+              open={profileOpen}
+              onClose={() => setProfileOpen(false)}
+              user={user}
+              onUserUpdate={(u) => setUser((prev) => ({ ...prev, ...u }))}
+              onReportsChanged={() => loadData(null, true)}
+              onAccountDeleted={() => { setUser(null); setUserStats(null); setProfileOpen(false); setPage('home'); }}
+              setToast={setToast}
+            />
             <AdminSheet open={adminOpen} onClose={() => setAdminOpen(false)} onStatusChange={() => loadData(null, true)} setToast={setToast} />
             <AnalysisPanel open={analysisOpen} onClose={() => setAnalysisOpen(false)} />
           </Suspense>

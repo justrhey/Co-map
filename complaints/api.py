@@ -153,7 +153,11 @@ class ComplaintDetailSerializer(serializers.ModelSerializer):
             'acknowledged_at', 'resolved_at', 'resolution_photo', 'official_notes',
             'vote_count', 'user_vote', 'discussion_enabled', 'comment_count',
         ]
-        read_only_fields = ['id', 'status', 'created_at', 'updated_at',
+        # `status` is writable so an owner can update their own report's status
+        # (timestamps are set in the viewset's perform_update). The `photo`
+        # SerializerMethodField is inherently read-only. Moderation-only fields
+        # stay read-only here.
+        read_only_fields = ['id', 'created_at', 'updated_at',
                             'acknowledged_at', 'resolved_at', 'resolution_photo', 'official_notes']
 
     comment_count = serializers.SerializerMethodField()

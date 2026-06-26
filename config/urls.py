@@ -7,7 +7,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
 from complaints.views import ComplaintViewSet, public_summary, admin_summary, barangay_scores, ai_analysis, user_stats, user_profile, health_check
-from complaints.auth import RegisterView, LoginView, LogoutView, MeView, social_auth_urls, social_complete, verify_email, ResendVerificationView
+from complaints.auth import RegisterView, LoginView, LogoutView, MeView, social_auth_urls, social_complete, verify_email, ResendVerificationView, AccountView, ChangePasswordView
 
 router = DefaultRouter()
 router.register(r'complaints', ComplaintViewSet, basename='complaint')
@@ -36,6 +36,8 @@ urlpatterns = [
     path('api/auth/social-complete/', social_complete, name='auth-social-complete'),
     path('api/auth/verify-email/', verify_email, name='auth-verify-email'),
     path('api/auth/resend-verification/', ResendVerificationView.as_view(), name='auth-resend-verification'),
+    path('api/auth/account/', AccountView.as_view(), name='auth-account'),
+    path('api/auth/change-password/', ChangePasswordView.as_view(), name='auth-change-password'),
 
     # Health check
     path('health/', health_check, name='health-check'),
