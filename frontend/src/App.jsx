@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 import { fetchComplaints, fetchCachedComplaints, fetchCachedBarangayScores, fetchUserStats, fetchMe, logout as apiLogout, setToken, isLoggedIn } from './api';
 import { BADGE_ICONS } from './utils/badges';
+import './App.css';
 
 // Components loaded on every page (small, always needed).
 import FilterBar from './components/FilterBar';
