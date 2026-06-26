@@ -109,11 +109,6 @@ export default function LiveMapPreview({ onEnter }) {
       onKeyDown={(e) => { if (e.key === 'Enter') onEnter?.(); }}
       title="Open the live map"
     >
-      <div className="geo-bracket geo-bracket-tl" />
-      <div className="geo-bracket geo-bracket-tr" />
-      <div className="geo-bracket geo-bracket-bl" />
-      <div className="geo-bracket geo-bracket-br" />
-
       <div ref={containerRef} className="live-map-canvas" />
 
       {/* Hover affordance — it's the real app behind the glass. */}
