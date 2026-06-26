@@ -274,6 +274,11 @@ SOCIALACCOUNT_PROVIDERS = {
         },
         'SCOPE': ['profile', 'email'],
         'AUTH_PARAMS': {'access_type': 'online'},
+        # 🔑 Google's emails are already verified (user logged into Google).
+        #   Without this, ACCOUNT_EMAIL_VERIFICATION='mandatory' forces all
+        #   Google users to verify again—and since no SMTP is configured on
+        #   Vercel, the verification email is silently dropped.
+        'VERIFIED_EMAIL': True,
     },
     'github': {
         'APP': {

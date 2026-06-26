@@ -30,3 +30,5 @@ Thumbs.db
 
 # Output
 _bmad-output/
+.vercel
+.env*
