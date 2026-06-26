@@ -208,3 +208,44 @@ class Comment(models.Model):
 
     def __str__(self):
         return f"Comment by {self.user_id} on complaint#{self.complaint_id}"
+
+
+class UserBan(models.Model):
+    """A temporary suspension of a user, set by staff. While an active ban
+    exists, the user can't submit reports or comments. Bans expire on their own
+    at `expires_at` (or are permanent when it's null)."""
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='ban',
+    )
+    reason = models.CharField(max_length=200, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When the ban lifts. Leave empty for a permanent ban.",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='bans_issued',
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+
+    @property
+    def is_active(self):
+        from django.utils import timezone
+        return self.expires_at is None or self.expires_at > timezone.now()
+
+    def __str__(self):
+        from django.utils import timezone
+        if self.expires_at is None:
+            window = 'permanent'
+        elif self.expires_at > timezone.now():
+            window = f'until {self.expires_at:%Y-%m-%d %H:%M}'
+        else:
+            window = 'expired'
+        return f"Ban on {self.user_id} ({window})"

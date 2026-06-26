@@ -93,7 +93,11 @@ export default function AdminSheet({ open, onClose, onStatusChange, setToast }) 
                       <div className="admin-item-body">
                         <p className="admin-item-desc">{c.description?.slice(0, 120) || 'No description'}</p>
                         <div className="admin-item-meta">
-                          <span>{c.user?.name || c.user?.email || 'Anonymous'}</span>
+                          <span className="admin-item-identity">
+                            {c.user?.name || 'Anonymous'}
+                            {c.user_email && <span className="admin-item-email"> · {c.user_email}</span>}
+                            {c.user_banned && <span className="admin-banned-tag">Banned</span>}
+                          </span>
                           <span>{new Date(c.created_at).toLocaleDateString()}</span>
                         </div>
                       </div>

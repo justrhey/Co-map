@@ -9,7 +9,8 @@ from django.db.models.functions import Round
 from django.utils import timezone
 from django.http import JsonResponse
 from django.contrib.auth import get_user_model
-from .models import Complaint, ReportScore, Vote, Comment
+from rest_framework.exceptions import PermissionDenied
+from .models import Complaint, ReportScore, Vote, Comment, UserBan
 from .api import (
     ComplaintListSerializer, ComplaintDetailSerializer,
     ComplaintCreateSerializer, ComplaintStatusUpdateSerializer,
@@ -58,6 +59,24 @@ class VoteThrottle(UserRateThrottle):
     """Light cap on vote toggling to stop count-spam loops.
     Rate comes from DEFAULT_THROTTLE_RATES['vote']."""
     scope = 'vote'
+
+
+def assert_not_banned(user):
+    """Raise 403 if the user is currently serving an active ban. Used to gate
+    content creation (reports, comments). Expired bans are ignored."""
+    if not user or not user.is_authenticated:
+        return
+    ban = UserBan.objects.filter(user=user).first()
+    if ban and ban.is_active:
+        from django.utils import timezone
+        if ban.expires_at:
+            when = ban.expires_at.strftime('%b %d, %Y at %H:%M')
+            msg = f"Your account is suspended until {when}."
+        else:
+            msg = "Your account is suspended."
+        if ban.reason:
+            msg += f" Reason: {ban.reason}"
+        raise PermissionDenied(msg)
 
 
 class IsOwnerOrStaffOrReadOnly(permissions.BasePermission):
@@ -431,6 +450,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         return super().get_throttles()
 
     def perform_create(self, serializer):
+        assert_not_banned(self.request.user)
         ip = get_client_ip(self.request)
         complaint = serializer.save(
             ip_address=ip,
@@ -582,6 +602,7 @@ class ComplaintViewSet(viewsets.ModelViewSet):
         # POST — must be authenticated and discussion must be open.
         if not request.user.is_authenticated:
             return Response({'detail': 'Sign in to join the discussion.'}, status=401)
+        assert_not_banned(request.user)  # suspended users can't comment
         if not complaint.discussion_enabled:
             return Response({'detail': 'Discussion is not open for this report.'}, status=403)
 
@@ -645,8 +666,27 @@ def admin_summary(request):
     by_category = qs.values('category').annotate(count=Count('id'))
     by_status = qs.values('status').annotate(count=Count('id'))
 
-    recent = qs[:100]
+    recent = qs[:100].select_related('user')
     recent_data = ComplaintListSerializer(recent, many=True, context={'request': request}).data
+
+    # This endpoint is staff-only, so attach the reporter's REAL email to each
+    # report. The public list serializer hides email (PII); admins need to see
+    # the true identity even when a user changed their display name to stay
+    # "anonymous". Also flag whether the reporter is currently banned.
+    email_map, banned_map = {}, {}
+    for c in recent:
+        if c.user_id:
+            email_map[c.id] = c.user.email
+    active_bans = set(
+        UserBan.objects.filter(
+            user_id__in=[c.user_id for c in recent if c.user_id]
+        ).filter(Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()))
+        .values_list('user_id', flat=True)
+    )
+    user_by_complaint = {c.id: c.user_id for c in recent}
+    for r in recent_data:
+        r['user_email'] = email_map.get(r['id'])
+        r['user_banned'] = user_by_complaint.get(r['id']) in active_bans
 
     User = get_user_model()
     user_count = User.objects.count()

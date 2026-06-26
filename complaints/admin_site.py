@@ -60,13 +60,14 @@ admin_site = ComplaintMapAdminSite()
 
 # ── Register models (load ModelAdmin classes from admin.py late to avoid circular imports) ──
 def _register_models():
-    from complaints.admin import ComplaintAdmin, ReportMediaAdmin, ReportScoreAdmin, CommentAdmin
-    from complaints.models import Complaint, ReportMedia, ReportScore, Comment
+    from complaints.admin import ComplaintAdmin, ReportMediaAdmin, ReportScoreAdmin, CommentAdmin, UserBanAdmin
+    from complaints.models import Complaint, ReportMedia, ReportScore, Comment, UserBan
 
     admin_site.register(Complaint, ComplaintAdmin)
     admin_site.register(ReportMedia, ReportMediaAdmin)
     admin_site.register(ReportScore, ReportScoreAdmin)
     admin_site.register(Comment, CommentAdmin)
+    admin_site.register(UserBan, UserBanAdmin)
     admin_site.register(User, UserAdmin)
     admin_site.register(Group, GroupAdmin)
 

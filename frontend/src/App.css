@@ -4021,6 +4021,14 @@ textarea::placeholder { color: var(--text-3); }
   gap: 12px;
   font-size: 11px;
   color: var(--text-3);
+  justify-content: space-between;
+}
+.admin-item-identity { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.admin-item-email { color: var(--text-2); word-break: break-all; }
+.admin-banned-tag {
+  font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px;
+  color: #fca5a5; background: rgba(239,68,68,0.16);
+  padding: 1px 6px; border-radius: 7px;
 }
 
 .admin-item-actions {
