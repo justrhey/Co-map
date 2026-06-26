@@ -648,11 +648,22 @@ def public_summary(request):
     recent = qs.order_by('-created_at')[:10]
     recent_data = ComplaintListSerializer(recent, many=True).data
 
+    # Live-activity signals for the landing hero (community is alive).
+    now = timezone.now()
+    week_ago = now - timezone.timedelta(days=7)
+    day_ago = now - timezone.timedelta(days=1)
+    reports_this_week = qs.filter(created_at__gte=week_ago).count()
+    resolved_today = qs.filter(status='resolved', resolved_at__gte=day_ago).count()
+    active_contributors = qs.filter(user__isnull=False).values('user').distinct().count()
+
     return Response({
         'total': total,
         'by_category': {item['category']: item['count'] for item in by_category},
         'by_status': {item['status']: item['count'] for item in by_status},
         'recent': recent_data,
+        'reports_this_week': reports_this_week,
+        'resolved_today': resolved_today,
+        'active_contributors': active_contributors,
     })
 
 

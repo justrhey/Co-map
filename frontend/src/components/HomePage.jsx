@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import LiveMapPreview from './LiveMapPreview';
+import { getCategoryIcon } from './Icons';
 
 /* ── Scroll reveal hook (IntersectionObserver, no scroll listeners) ──── */
 function useReveal(threshold = 0.15) {
@@ -167,6 +168,72 @@ function usePublicStats() {
   return { stats, loading };
 }
 
+/* ── Live activity strip (hero) — proves the community is active ─── */
+function LiveActivityStrip({ stats, loading }) {
+  const week = stats?.reports_this_week ?? 0;
+  const resolvedToday = stats?.resolved_today ?? 0;
+  const contributors = stats?.active_contributors ?? 0;
+
+  if (loading) return <div className="lp-activity lp-activity-loading" aria-hidden="true" />;
+
+  return (
+    <div className="lp-activity" role="status" aria-label="Live community activity">
+      <span className="lp-activity-dot" />
+      <span className="lp-activity-item"><strong>{week}</strong> report{week === 1 ? '' : 's'} this week</span>
+      <span className="lp-activity-sep" />
+      <span className="lp-activity-item"><strong>{resolvedToday}</strong> resolved today</span>
+      <span className="lp-activity-sep" />
+      <span className="lp-activity-item"><strong>{contributors}</strong> neighbor{contributors === 1 ? '' : 's'} active</span>
+    </div>
+  );
+}
+
+/* ── Recent reports preview — real content builds trust ─────────── */
+const STATUS_LABEL = { pending: 'Pending', approved: 'Approved', resolved: 'Resolved' };
+
+function RecentReports({ reports, onNavigate }) {
+  if (!reports?.length) return null;
+  const items = reports.slice(0, 6);
+  return (
+    <div className="bw-recent-grid">
+      {items.map((r, i) => (
+        <button
+          key={r.id}
+          className="bw-recent-card"
+          style={{ transitionDelay: `${i * 0.05}s` }}
+          onClick={() => onNavigate('map')}
+          title="Open the map"
+        >
+          <div className="bw-recent-head">
+            <span className="bw-recent-icon">{getCategoryIcon(r.category, 18)}</span>
+            <span className={`bw-recent-status ${r.status}`}>{STATUS_LABEL[r.status] || r.status}</span>
+            {r.score_grade && <span className="bw-recent-grade">{r.score_grade}</span>}
+          </div>
+          <span className="bw-recent-cat">{r.category_display}</span>
+          <span className="bw-recent-date">
+            {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ── Trust band — social proof right before the final CTA ───────── */
+function TrustBand({ stats }) {
+  const total = stats?.total ?? 0;
+  const resolved = stats?.by_status?.resolved ?? 0;
+  const rate = total > 0 ? Math.round((resolved / total) * 100) : 0;
+  const contributors = stats?.active_contributors ?? 0;
+  return (
+    <div className="bw-trust">
+      <div className="bw-trust-item"><span className="bw-trust-num">{rate}%</span><span className="bw-trust-label">Resolution rate</span></div>
+      <div className="bw-trust-item"><span className="bw-trust-num">{total}</span><span className="bw-trust-label">Issues reported</span></div>
+      <div className="bw-trust-item"><span className="bw-trust-num">{contributors}</span><span className="bw-trust-label">Active neighbors</span></div>
+    </div>
+  );
+}
+
 /* ── Revealable section wrapper ────────────────────────────────── */
 function Section({ className, children }) {
   const [ref, vis] = useReveal(0.1);
@@ -225,6 +292,7 @@ export default function HomePage({ onNavigate }) {
                   Create Account
                 </button>
               </div>
+              <LiveActivityStrip stats={stats} loading={loading} />
             </section>
             <section className="lp-right">
               <LiveMapPreview onEnter={() => onNavigate('map')} />
@@ -236,6 +304,16 @@ export default function HomePage({ onNavigate }) {
         <Section className="bw-section">
           <StatsBar stats={stats} loading={loading} />
         </Section>
+
+        {/* ── Recent reports preview (real content) ── */}
+        {stats?.recent?.length > 0 && (
+          <Section className="bw-section">
+            <div className="bw-section-header">
+              <h2 className="bw-section-title">Reported by neighbors, right now</h2>
+            </div>
+            <RecentReports reports={stats.recent} onNavigate={onNavigate} />
+          </Section>
+        )}
 
         {/* ── How It Works ── */}
         <Section className="bw-section">
@@ -341,6 +419,7 @@ export default function HomePage({ onNavigate }) {
           <div className="bw-cta-card">
             <div className="bw-cta-border" />
             <div className="bw-cta-content">
+              <TrustBand stats={stats} />
               <h2 className="bw-cta-title">Start Your Account</h2>
               <p className="bw-cta-desc">
                 Create a free account to submit reports, earn XP, track your impact,

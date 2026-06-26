@@ -4719,9 +4719,10 @@ textarea::placeholder { color: var(--text-3); }
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 14px;
   line-height: 1.7;
-  color: rgba(255, 255, 255, 0.4);
+  /* WCAG AA: 0.4 alpha on the dark hero failed 4.5:1 — raise to ~0.62. */
+  color: rgba(255, 255, 255, 0.62);
   max-width: 400px;
-  margin: 0 0 36px 0;
+  margin: 0 0 28px 0;
 }
 
 /* ── CTA buttons ── */
@@ -4739,6 +4740,75 @@ textarea::placeholder { color: var(--text-3); }
 .lp-cta-solid:hover { background: rgba(255, 255, 255, 0.85); }
 .lp-cta-ghost { background: transparent; color: #FFF; border: 1px solid rgba(255, 255, 255, 0.2); }
 .lp-cta-ghost:hover { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.4); }
+
+/* ── Live activity strip (hero) ── */
+.lp-activity {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  margin-top: 28px;
+  font-size: 12.5px; color: rgba(255,255,255,0.62);
+  font-variant-numeric: tabular-nums;
+}
+.lp-activity strong { color: #fff; font-weight: 700; }
+.lp-activity-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: #4ade80;
+  box-shadow: 0 0 8px rgba(74,222,128,0.6);
+  animation: live-pulse 1.8s ease-in-out infinite;
+}
+.lp-activity-sep { width: 3px; height: 3px; border-radius: 50%; background: rgba(255,255,255,0.25); }
+.lp-activity-loading { height: 18px; width: 280px; max-width: 100%; border-radius: 6px; background: rgba(255,255,255,0.05); }
+@media (prefers-reduced-motion: reduce) { .lp-activity-dot { animation: none; } }
+
+/* ── Recent reports preview ── */
+.bw-recent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+  max-width: 1100px; margin: 0 auto; width: 100%;
+}
+.bw-recent-card {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 16px;
+  text-align: left;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+.bw-recent-card:hover {
+  border-color: rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.05);
+  transform: translateY(-2px);
+}
+.bw-recent-head { display: flex; align-items: center; gap: 8px; }
+.bw-recent-icon { display: inline-flex; color: var(--text-2, #8b949e); }
+.bw-recent-status {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+  padding: 2px 8px; border-radius: 10px;
+}
+.bw-recent-status.pending { color: #fbbf24; background: rgba(251,191,36,0.14); }
+.bw-recent-status.approved { color: #4ade80; background: rgba(74,222,128,0.14); }
+.bw-recent-status.resolved { color: #60a5fa; background: rgba(96,165,250,0.14); }
+.bw-recent-grade {
+  margin-left: auto; font-size: 14px; font-weight: 800; color: #c0c6d0;
+  font-variant-numeric: tabular-nums;
+}
+.bw-recent-cat { font-size: 15px; font-weight: 700; color: #fff; }
+.bw-recent-date { font-size: 12px; color: var(--text-3, #6e7681); font-variant-numeric: tabular-nums; }
+
+/* ── Trust band (before final CTA) ── */
+.bw-trust {
+  display: flex; justify-content: center; gap: 36px; flex-wrap: wrap;
+  margin-bottom: 28px; padding-bottom: 24px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.bw-trust-item { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.bw-trust-num { font-size: 30px; font-weight: 800; color: #fff; line-height: 1; font-variant-numeric: tabular-nums; }
+.bw-trust-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-3, #6e7681); }
+@media (max-width: 767px) {
+  .bw-trust { gap: 24px; }
+  .bw-trust-num { font-size: 24px; }
+}
 
 /* ── Right: Map Showcase (50%) ── */
 .lp-right {
@@ -4867,6 +4937,7 @@ textarea::placeholder { color: var(--text-3); }
   color: #FFF;
   line-height: 1;
   margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;  /* counters don't jitter while animating */
 }
 
 .bw-stat-label {
