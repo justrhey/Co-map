@@ -13,6 +13,37 @@ export default function SubmitSheet({ open, latlng, onClose, onSubmit, onLoginRe
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [discussionEnabled, setDiscussionEnabled] = useState(true);
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragIn = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer?.items?.length > 0) setDragOver(true);
+  };
+
+  const handleDragOut = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      setPhoto(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setPhotoPreview(reader.result);
+      reader.readAsDataURL(file);
+    }
+  };
 
   useEffect(() => {
     if (open) {
@@ -135,28 +166,36 @@ export default function SubmitSheet({ open, latlng, onClose, onSubmit, onLoginRe
 
             <div className="field-group">
               <label>Photo <span className="field-req">*</span></label>
-              <div className="photo-upload" onClick={() => document.getElementById('photo-input')?.click()}>
-                {photoPreview ? (
-                  <div className="photo-preview-wrap">
-                    <img src={photoPreview} alt="Preview" className="photo-preview" />
-                    <button type="button" className="photo-remove" onClick={(e) => { e.stopPropagation(); setPhoto(null); setPhotoPreview(null); }}>
-                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                    </button>
-                    <span className="photo-change-hint">Tap to change</span>
+              {photoPreview ? (
+                <div className="photo-preview-wrap">
+                  <img src={photoPreview} alt="Preview" className="photo-preview" />
+                  <button type="button" className="photo-remove" onClick={() => { setPhoto(null); setPhotoPreview(null); }}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                  </button>
+                  <span className="photo-change-hint" onClick={() => document.getElementById('photo-input')?.click()}>Tap to change</span>
+                </div>
+              ) : (
+                <div
+                  className={`drop-zone${dragOver ? ' drop-zone-active' : ''}`}
+                  onDragEnter={handleDragIn}
+                  onDragLeave={handleDragOut}
+                  onDragOver={handleDrag}
+                  onDrop={handleDrop}
+                  onClick={() => document.getElementById('photo-input')?.click()}
+                >
+                  <div className="drop-zone-icon">
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="17 8 12 3 7 8"/>
+                      <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
                   </div>
-                ) : (
-                  <div className="photo-placeholder">
-                    <div className="photo-placeholder-icon">
-                      <svg viewBox="0 0 24 24" width={20} height={20} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                        <circle cx="12" cy="13" r="4"/>
-                      </svg>
-                    </div>
-                    <span className="photo-placeholder-text">Add a photo</span>
-                    <span className="photo-placeholder-hint">Shows what you're reporting</span>
-                  </div>
-                )}
-              </div>
+                  <span className="drop-zone-text">
+                    {dragOver ? 'Drop your photo here' : 'Drag & drop your photo here'}
+                  </span>
+                  <span className="drop-zone-hint">or tap to browse files</span>
+                </div>
+              )}
               <input id="photo-input" type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoChange} />
             </div>
 
