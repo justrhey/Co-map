@@ -32,3 +32,4 @@ Thumbs.db
 _bmad-output/
 .vercel
 .env*
+.serena/

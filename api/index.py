@@ -2,10 +2,12 @@
 
 Vercel's @vercel/python runtime looks for a module-level `app` (WSGI callable)
 in this file. All requests routed here by vercel.json (/api/*, /admin/*,
-/accounts/*, /static/*) are handed to Django's WSGI application.
+/accounts/*, /static/*, /media/*) are handed to Django's WSGI application.
 
-Static files are served by WhiteNoise (already in MIDDLEWARE); media is served
-from Supabase Storage, so the function itself never touches the filesystem.
+Static files are served by WhiteNoise (already in MIDDLEWARE); uploaded media
+files are stored in /tmp/mediafiles/ and served by the WhiteNoise WSGI wrapper
+below (persist only within a warm instance — configure Supabase S3 for durable
+media storage).
 """
 import os
 import sys
@@ -46,6 +48,24 @@ try:
 except Exception as exc:
     print(f'site domain init failed (non-fatal): {exc}')
 
+# Ensure writable media directory exists on Vercel (the app falls back to
+# /tmp/mediafiles when no Supabase S3 storage is configured).
+_MEDIA_DIR = '/tmp/mediafiles'
+if not os.path.isdir(_MEDIA_DIR) and os.environ.get('VERCEL'):
+    try:
+        os.makedirs(_MEDIA_DIR, exist_ok=True)
+    except Exception as exc:
+        print(f'media dir creation failed: {exc}')
+
 from django.core.wsgi import get_wsgi_application  # noqa: E402
 
-app = get_wsgi_application()
+application = get_wsgi_application()
+
+# Wrap with WhiteNoise to also serve uploaded media from /tmp.
+# WhiteNoise middleware in MIDDLEWARE handles STATIC_ROOT (admin/DRF assets);
+# this wrapper handles MEDIA_ROOT (/tmp/mediafiles/) so photo URLs resolve.
+from whitenoise import WhiteNoise  # noqa: E402
+app = WhiteNoise(application)
+# Only add the /tmp media directory on Vercel; otherwise use default behavior.
+if os.environ.get('VERCEL'):
+    app.add_files('/tmp/mediafiles', prefix='media/')

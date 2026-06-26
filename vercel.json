@@ -16,6 +16,7 @@
     { "src": "/admin(/.*)?", "dest": "/api/index.py" },
     { "src": "/accounts/(.*)", "dest": "/api/index.py" },
     { "src": "/django-static/(.*)", "dest": "/api/index.py" },
+    { "src": "/media/(.*)",        "dest": "/api/index.py" },
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]

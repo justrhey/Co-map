@@ -350,6 +350,18 @@ if USE_SUPABASE_STORAGE:
         os.environ['SUPABASE_S3_ENDPOINT'].replace('/storage/v1/s3', '')
         + f"/storage/v1/object/public/{os.environ['SUPABASE_S3_BUCKET']}/",
     )
+elif os.environ.get('VERCEL'):
+    # Vercel's filesystem is read-only except /tmp. Store uploaded media in
+    # /tmp so submissions don't error. ⚠️ Files are lost on cold start — set up
+    # Supabase S3 env vars for persistent storage.
+    _media_storage = {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        'OPTIONS': {
+            'location': '/tmp/mediafiles',
+        },
+    }
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = '/tmp/mediafiles'
 else:
     _media_storage = {'BACKEND': 'django.core.files.storage.FileSystemStorage'}
     MEDIA_URL = 'media/'
