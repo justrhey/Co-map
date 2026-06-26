@@ -14,6 +14,47 @@ const Chevron = ({ open }) => (
   </svg>
 );
 
+// Loading placeholder shaped like the real 3-panel popup, so the layout doesn't
+// jump when the report data arrives. Pulses/shimmers like the comment skeleton.
+const DetailSkeleton = () => (
+  <div className="dp-columns" aria-busy="true" aria-label="Loading report">
+    {/* Panel 1: score */}
+    <div className="dp-card dsk-card">
+      <div className="dsk-head"><span className="dsk-line dsk-eyebrow" /></div>
+      <div className="dsk-body">
+        <div className="dsk-score">
+          <span className="dsk-ring" />
+          <span className="dsk-line dsk-grade" />
+        </div>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div className="dsk-bar-row" key={i}>
+            <span className="dsk-line dsk-bar-label" />
+            <span className="dsk-line dsk-bar-track" />
+          </div>
+        ))}
+      </div>
+    </div>
+    {/* Panel 2: report */}
+    <div className="dp-card dsk-card">
+      <div className="dsk-head"><span className="dsk-line dsk-eyebrow" /></div>
+      <div className="dsk-body">
+        <span className="dsk-line dsk-photo" />
+        <span className="dsk-line dsk-text" />
+        <span className="dsk-line dsk-text" />
+        <span className="dsk-line dsk-text short" />
+      </div>
+    </div>
+    {/* Panel 3: discussion */}
+    <div className="dp-card dsk-card">
+      <div className="dsk-head"><span className="dsk-line dsk-eyebrow" /></div>
+      <div className="dsk-body">
+        <span className="dsk-line dsk-text" />
+        <span className="dsk-line dsk-text short" />
+      </div>
+    </div>
+  </div>
+);
+
 export default function DetailSheet({ open, complaintId, onClose }) {
   const [complaint, setComplaint] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -46,7 +87,7 @@ export default function DetailSheet({ open, complaintId, onClose }) {
         </div>
         <div className="sheet-content">
           {loading ? (
-            <div className="detail-loading"><span className="spinner" /> Loading...</div>
+            <DetailSkeleton />
           ) : complaint ? (
             <div className="dp-columns">
               {/* ── Panel 1: Score & Stats ── */}
