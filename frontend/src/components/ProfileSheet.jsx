@@ -132,32 +132,59 @@ export default function ProfileSheet({ open, onClose, user, onUserUpdate, onRepo
     }
   };
 
+  const displayName = user?.name || profile?.name || 'You';
+  const initial = displayName.charAt(0).toUpperCase();
+
+  const NAV = [
+    { id: 'overview', label: 'Overview', icon: <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
+    { id: 'reports', label: 'My Reports', count: reports.length, icon: <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> },
+    { id: 'settings', label: 'Settings', icon: <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> },
+  ];
+
+  const titleFor = { overview: 'Overview', reports: 'My Reports', settings: 'Settings' };
+
   return (
     <div className={`sheet-overlay${open ? ' open' : ''}`}>
       <div className="sheet-backdrop" onClick={onClose} />
       <div className="sheet profile-sheet" role="dialog" aria-label="Your profile">
         <div className="sheet-grip" />
-        <div className="sheet-content">
-          {loading ? (
-            <div className="detail-loading"><span className="spinner" /> Loading...</div>
-          ) : profile ? (
-            <>
-              <div className="sheet-heading">
-                <h3>Your Profile</h3>
+        <button className="profile-close-x" onClick={onClose} aria-label="Close">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        {loading ? (
+          <div className="detail-loading"><span className="spinner" /> Loading...</div>
+        ) : profile ? (
+          <div className="profile-shell">
+            {/* ── Identity rail ── */}
+            <aside className="profile-rail">
+              <div className="profile-id">
+                <div className="profile-avatar">{initial}</div>
+                <span className="profile-id-name">{displayName}</span>
+                {user?.email && <span className="profile-id-email">{user.email}</span>}
+                <span className="profile-id-level">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15 8.5 22 9.3 17 14 18.2 21 12 17.5 5.8 21 7 14 2 9.3 9 8.5 12 2"/></svg>
+                  Level {profile.level?.level || 1}
+                </span>
               </div>
 
-              {/* Tabs */}
-              <div className="profile-tabs">
-                {['overview', 'reports', 'settings'].map((t) => (
-                  <button
-                    key={t}
-                    className={`profile-tab${tab === t ? ' active' : ''}`}
-                    onClick={() => setTab(t)}
-                  >
-                    {t === 'overview' ? 'Overview' : t === 'reports' ? `Reports${reports.length ? ` · ${reports.length}` : ''}` : 'Settings'}
+              <nav className="profile-nav">
+                {NAV.map((n) => (
+                  <button key={n.id} className={`profile-nav-btn${tab === n.id ? ' active' : ''}`} onClick={() => setTab(n.id)}>
+                    {n.icon}
+                    <span className="profile-nav-label">{n.label}</span>
+                    {n.count != null && n.count > 0 && <span className="profile-nav-count">{n.count}</span>}
                   </button>
                 ))}
+              </nav>
+
+              <div className="profile-rail-foot">
+                <button className="btn btn-ghost" style={{ width: '100%' }} onClick={onClose}>Close</button>
               </div>
+            </aside>
+
+            {/* ── Content ── */}
+            <div className="profile-main">
+              <h3 className="profile-main-title">{titleFor[tab]}</h3>
 
               {/* ─────────── OVERVIEW ─────────── */}
               {tab === 'overview' && (
@@ -338,15 +365,11 @@ export default function ProfileSheet({ open, onClose, user, onUserUpdate, onRepo
                   </div>
                 </>
               )}
-
-              <div className="detail-close-bar">
-                <button className="btn btn-ghost" style={{ width: '100%' }} onClick={onClose}>Close</button>
-              </div>
-            </>
-          ) : (
-            <div className="detail-loading">Could not load profile.</div>
-          )}
-        </div>
+            </div>
+          </div>
+        ) : (
+          <div className="detail-loading">Could not load profile.</div>
+        )}
       </div>
 
       <ConfirmDialog
