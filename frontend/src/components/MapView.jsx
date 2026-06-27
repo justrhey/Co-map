@@ -13,7 +13,9 @@
 import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 
-const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
+// "liberty" is OpenFreeMap's detailed style — green parks/woods, colored roads,
+// water, POIs and place labels built in (positron is intentionally bare).
+const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
 
 // Realistic location-pin (📍-style, drawn as SVG) dropped where the man lands.
 // Tip sits on the lng/lat (anchor: 'bottom').
@@ -118,24 +120,13 @@ const BASE_THEME = {
   night: { bg: '#1a1c2e', water: '#12203f', park: '#1a2733', wood: '#1c2935', land: '#1e2138' },
 };
 
-// Recolor the base style layers (water/parks/land) to the environment palette.
-function applyBaseTheme(map, phase) {
-  const t = BASE_THEME[phase] || BASE_THEME.day;
-  const set = (layer, prop, val) => { if (map.getLayer(layer)) { try { map.setPaintProperty(layer, prop, val); } catch (e) { /* layer absent in style */ } } };
-  // Land base — neutral warm grey, fully opaque so nothing blue shows through.
-  set('background', 'background-color', t.bg);
-  // Water — the only blue in the scene, fully opaque so it reads as water.
-  set('water', 'fill-color', t.water);
-  set('water', 'fill-opacity', 1);
-  set('waterway', 'line-color', t.water);
-  // Parks/woods — green, sitting on the land base.
-  set('park', 'fill-color', t.park);
-  set('park', 'fill-opacity', 0.95);
-  set('landcover_wood', 'fill-color', t.wood);
-  set('landcover_wood', 'fill-opacity', 0.6);
-  // Residential — a subtle warm overlay on land (kept neutral, never blue).
-  set('landuse_residential', 'fill-color', t.land);
-  set('landuse_residential', 'fill-opacity', 0.35);
+// We now use OpenFreeMap "liberty", which ships its own detailed palette
+// (green parks/woods, colored roads, water, POIs). We intentionally DON'T
+// recolor the base layers anymore — that dark override was for positron and
+// would erase all of liberty's detail. Kept as a no-op so existing callers
+// (applyMood / phase changes) stay valid.
+function applyBaseTheme(/* map, phase */) {
+  /* no-op: liberty provides its own detailed basemap colors */
 }
 // Fully opaque — buildings are solid, never see-through.
 const BUILDING_OPACITY = { day: 1, dusk: 1, night: 1 };
@@ -171,12 +162,6 @@ function applyMood(map, phase, tilt = false) {
   // Recolor the crisp edge outline for this time of day.
   if (map.getLayer('building-outline')) {
     map.setPaintProperty('building-outline', 'line-color', BUILDING_EDGE[phase]);
-  }
-  // Re-tint the tree canopies for this time of day.
-  if (map.getLayer('tree-cover-wood') || map.getLayer('tree-cover-park')) {
-    try {
-      if (map.hasImage('tree-pattern')) map.updateImage('tree-pattern', makeTreePattern(phase));
-    } catch (e) { /* image not ready */ }
   }
   // Broken-streetlight reports cast a dark patch — only visible at night.
   if (map.getLayer('dark-zones')) {
@@ -216,80 +201,6 @@ function buildComplaintEl(c) {
     </div>
     <div class="bubble-tail"></div>`;
   return el;
-}
-
-// ── Tree texture ──────────────────────────────────────────────────
-// Paint little tree canopies over wooded/park land so green areas read as
-// actual foliage instead of flat green blobs. We draw a small tileable canvas
-// of canopy dots once and register it as a repeatable fill-pattern image.
-function makeTreePattern(phase) {
-  const S = 64;
-  const cvs = document.createElement('canvas');
-  cvs.width = S; cvs.height = S;
-  const ctx = cvs.getContext('2d');
-  // Canopy colors tuned per time of day (lighter dome + darker base).
-  const palette = {
-    day:   ['#3f7d4a', '#2f6038'],
-    dusk:  ['#3a6f44', '#2a5733'],
-    night: ['#1f3a2a', '#16291e'],
-  }[phase] || ['#3f7d4a', '#2f6038'];
-  // A few canopies scattered so the tile repeats without obvious seams.
-  const trees = [
-    [16, 18, 9], [44, 12, 7], [30, 38, 10], [52, 46, 8], [10, 50, 7],
-  ];
-  for (const [x, y, r] of trees) {
-    const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.2, x, y, r);
-    g.addColorStop(0, palette[0]);
-    g.addColorStop(1, palette[1]);
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  return ctx.getImageData(0, 0, S, S);
-}
-
-// Register the tree pattern and add fill layers over wood/park areas.
-function addTreeCover(map, phase) {
-  try {
-    if (!map.hasImage || !map.hasImage('tree-pattern')) {
-      map.addImage('tree-pattern', makeTreePattern(phase), { pixelRatio: 2 });
-    }
-    const vectorSrc = firstVectorSourceId(map);
-    if (!vectorSrc) return;
-    const before = firstSymbolLayerId(map);
-    // Wooded landcover (forests, scrub, grass-with-trees).
-    if (!map.getLayer('tree-cover-wood')) {
-      map.addLayer({
-        id: 'tree-cover-wood',
-        type: 'fill',
-        source: vectorSrc,
-        'source-layer': 'landcover',
-        filter: ['in', ['get', 'class'], ['literal', ['wood', 'forest', 'scrub', 'tree']]],
-        minzoom: 12,
-        paint: {
-          'fill-pattern': 'tree-pattern',
-          'fill-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0, 13.5, 0.85],
-        },
-      }, before);
-    }
-    // Parks get a lighter scatter so they read as planted, not dense forest.
-    if (!map.getLayer('tree-cover-park')) {
-      map.addLayer({
-        id: 'tree-cover-park',
-        type: 'fill',
-        source: vectorSrc,
-        'source-layer': 'park',
-        minzoom: 13,
-        paint: {
-          'fill-pattern': 'tree-pattern',
-          'fill-opacity': ['interpolate', ['linear'], ['zoom'], 13, 0, 14.5, 0.55],
-        },
-      }, before);
-    }
-  } catch (e) {
-    console.warn('Tree cover unavailable for this style:', e?.message);
-  }
 }
 
 // Find the vector source id in the loaded style (so 3D buildings attach
@@ -376,9 +287,6 @@ export default function MapView({
       // Recolor the basemap (water/parks/land) for the current time of day —
       // this is where the scene's color depth comes from.
       applyBaseTheme(map, moodForHour(new Date().getHours()));
-
-      // Scatter tree canopies over wooded/park areas so greenery reads as foliage.
-      addTreeCover(map, moodForHour(new Date().getHours()));
 
       // ── Native 3D building extrusions — simple plain solid colour ──
       const vectorSrc = firstVectorSourceId(map);
