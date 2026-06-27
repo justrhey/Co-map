@@ -172,16 +172,97 @@ function applyDarkTint(map) {
       else if (layer.type === 'fill-extrusion') map.setPaintProperty(id, 'fill-extrusion-color', color);
     } catch (e) { /* layer not paintable that way */ }
   }
-  // Dim place labels so they read on the dark base.
+  // Hide ALL of liberty's text/POI clutter (place names, shops, road labels,
+  // icons). We want a clean atmospheric map — no place details. Our own
+  // barangay labels are added separately and are not skipped here.
   for (const layer of map.getStyle().layers || []) {
     if (layer.type !== 'symbol') continue;
     if (SKIP.test(layer.id)) continue;
-    try {
-      map.setPaintProperty(layer.id, 'text-color', 'rgba(220,226,235,0.85)');
-      map.setPaintProperty(layer.id, 'text-halo-color', 'rgba(8,11,17,0.9)');
-      map.setPaintProperty(layer.id, 'text-halo-width', 1.2);
-    } catch (e) { /* not a text layer */ }
+    try { map.setLayoutProperty(layer.id, 'visibility', 'none'); } catch (e) { /* not toggleable */ }
   }
+}
+
+// ── Tree canopy texture ───────────────────────────────────────────
+// A tileable patch of canopy dots, painted over parks/woods/grass so green
+// areas read as actual trees, not flat blobs.
+function makeTreePattern() {
+  const S = 48;
+  const cvs = document.createElement('canvas');
+  cvs.width = S; cvs.height = S;
+  const ctx = cvs.getContext('2d');
+  const trees = [[12, 14, 7], [34, 10, 5], [24, 30, 8], [40, 36, 6], [8, 38, 5]];
+  for (const [x, y, r] of trees) {
+    const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.2, x, y, r);
+    g.addColorStop(0, '#2f6b3d');
+    g.addColorStop(1, '#1c4226');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  }
+  return ctx.getImageData(0, 0, S, S);
+}
+
+// ── Lit-window texture ─────────────────────────────────────────────
+// A grid of warm/cool glowing windows on a dark wall, tiled over building
+// sides so the city reads as "lights on in the houses & buildings" at night.
+function makeWindowPattern() {
+  const S = 32;
+  const cvs = document.createElement('canvas');
+  cvs.width = S; cvs.height = S;
+  const ctx = cvs.getContext('2d');
+  ctx.fillStyle = '#1a1f29';            // dark wall
+  ctx.fillRect(0, 0, S, S);
+  const lit = ['#ffd27a', '#ffe6a8', '#cfe0ff', '#1c2230']; // warm, warm, cool, dark(off)
+  const cell = 8, pad = 2, w = cell - pad * 2;
+  for (let gy = 0; gy < S; gy += cell) {
+    for (let gx = 0; gx < S; gx += cell) {
+      const c = lit[Math.floor(Math.random() * lit.length)];
+      ctx.fillStyle = c;
+      if (c !== '#1c2230') { ctx.shadowColor = c; ctx.shadowBlur = 3; } else ctx.shadowBlur = 0;
+      ctx.fillRect(gx + pad, gy + pad, w, w);
+    }
+  }
+  ctx.shadowBlur = 0;
+  return ctx.getImageData(0, 0, S, S);
+}
+
+// Paint tree canopies over liberty's green source-layers.
+function addTreeCover(map) {
+  try {
+    if (!map.hasImage('tree-pattern')) map.addImage('tree-pattern', makeTreePattern(), { pixelRatio: 2 });
+    const vectorSrc = firstVectorSourceId(map);
+    if (!vectorSrc) return;
+    const before = map.getLayer('3d-buildings') ? '3d-buildings' : firstSymbolLayerId(map);
+    const greens = [
+      { id: 'tc-wood',  sl: 'landcover', filter: ['==', ['get', 'class'], 'wood'],  op: 0.9 },
+      { id: 'tc-grass', sl: 'landcover', filter: ['==', ['get', 'class'], 'grass'], op: 0.5 },
+      { id: 'tc-park',  sl: 'park',      filter: null,                              op: 0.6 },
+    ];
+    for (const g of greens) {
+      if (map.getLayer(g.id)) continue;
+      const layer = {
+        id: g.id, type: 'fill', source: vectorSrc, 'source-layer': g.sl, minzoom: 12,
+        paint: { 'fill-pattern': 'tree-pattern', 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0, 14, g.op] },
+      };
+      if (g.filter) layer.filter = g.filter;
+      map.addLayer(layer, before);
+    }
+  } catch (e) { console.warn('Tree cover failed:', e?.message); }
+}
+
+// Give the 3D buildings lit windows at night (warm/cool glowing grid).
+function addBuildingLights(map, phase) {
+  try {
+    if (!map.getLayer('3d-buildings')) return;
+    if (phase === 'night') {
+      if (!map.hasImage('window-pattern')) map.addImage('window-pattern', makeWindowPattern(), { pixelRatio: 2 });
+      map.setPaintProperty('3d-buildings', 'fill-extrusion-pattern', 'window-pattern');
+      map.setPaintProperty('3d-buildings', 'fill-extrusion-color', '#ffffff'); // pattern shows true colors
+    } else {
+      // Daytime — no lit windows; plain solid building color.
+      map.setPaintProperty('3d-buildings', 'fill-extrusion-pattern', null);
+      map.setPaintProperty('3d-buildings', 'fill-extrusion-color', BUILDING_FILL[phase]);
+    }
+  } catch (e) { console.warn('Building lights failed:', e?.message); }
 }
 
 // Kept for compatibility with applyMood / phase changes. The dark tint is
@@ -216,8 +297,8 @@ const BUILDING_EDGE = { day: '#9a9a9a', dusk: '#888888', night: '#7a7a7e' };
 function applyMood(map, phase, tilt = false) {
   applyBaseTheme(map, phase);  // recolor water/parks/land for this time of day
   if (map.getLayer('3d-buildings')) {
-    // Plain solid building colour for this time of day.
-    map.setPaintProperty('3d-buildings', 'fill-extrusion-color', BUILDING_FILL[phase]);
+    // Lit windows at night, plain solid colour by day.
+    addBuildingLights(map, phase);
     map.setLight(LIGHT[phase]);  // re-light the scene for the new time of day
   }
   // Recolor the crisp edge outline for this time of day.
@@ -404,6 +485,10 @@ export default function MapView({
           console.warn('3D buildings unavailable for this style:', e?.message);
         }
       }
+
+      // Trees over green areas, and lit windows in buildings (at night).
+      addTreeCover(map);
+      addBuildingLights(map, phase);
 
       // Complaints render as individual HTML "pole" markers (see effect below).
 
