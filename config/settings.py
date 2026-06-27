@@ -268,6 +268,15 @@ SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
 # don't have), allauth shows its intermediate /accounts/3rdparty/signup/ form
 # and bounces to the bare /accounts/login/ page instead of the SPA.
 SOCIALACCOUNT_AUTO_SIGNUP = True
+# If a Google login's email matches an existing account, connect to it and log
+# in directly instead of showing the signup form. This is the real fix for the
+# "complete the following form" page: it appears when the email already belongs
+# to an email/password account, so allauth refuses to silently auto-create.
+# Safe here because Google emails are provider-verified.
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
+# Custom adapter forces auto-signup even when ACCOUNT_SIGNUP_FIELDS would
+# otherwise demand a password the OAuth user doesn't have.
+SOCIALACCOUNT_ADAPTER = 'complaints.adapters.AutoConnectSocialAdapter'
 
 # 🔑 PRODUCTION — Google OAuth setup:
 #   1. Go to https://console.cloud.google.com/apis/credentials
