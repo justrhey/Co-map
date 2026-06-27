@@ -182,25 +182,6 @@ function applyDarkTint(map) {
   }
 }
 
-// ── Tree canopy texture ───────────────────────────────────────────
-// A tileable patch of canopy dots, painted over parks/woods/grass so green
-// areas read as actual trees, not flat blobs.
-function makeTreePattern() {
-  const S = 48;
-  const cvs = document.createElement('canvas');
-  cvs.width = S; cvs.height = S;
-  const ctx = cvs.getContext('2d');
-  const trees = [[12, 14, 7], [34, 10, 5], [24, 30, 8], [40, 36, 6], [8, 38, 5]];
-  for (const [x, y, r] of trees) {
-    const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.2, x, y, r);
-    g.addColorStop(0, '#2f6b3d');
-    g.addColorStop(1, '#1c4226');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-  }
-  return ctx.getImageData(0, 0, S, S);
-}
-
 // ── Lit-window texture ─────────────────────────────────────────────
 // A grid of warm/cool glowing windows on a dark wall, tiled over building
 // sides so the city reads as "lights on in the houses & buildings" at night.
@@ -225,28 +206,29 @@ function makeWindowPattern() {
   return ctx.getImageData(0, 0, S, S);
 }
 
-// Paint tree canopies over liberty's green source-layers.
+// Plain green fill over liberty's green source-layers (parks/woods/grass) —
+// solid grass color, no texture/dots. The dark tint pass already colors these
+// dark; this gives them a clearer, more uniform green.
 function addTreeCover(map) {
   try {
-    if (!map.hasImage('tree-pattern')) map.addImage('tree-pattern', makeTreePattern(), { pixelRatio: 2 });
     const vectorSrc = firstVectorSourceId(map);
     if (!vectorSrc) return;
     const before = map.getLayer('3d-buildings') ? '3d-buildings' : firstSymbolLayerId(map);
     const greens = [
-      { id: 'tc-wood',  sl: 'landcover', filter: ['==', ['get', 'class'], 'wood'],  op: 0.9 },
-      { id: 'tc-grass', sl: 'landcover', filter: ['==', ['get', 'class'], 'grass'], op: 0.5 },
-      { id: 'tc-park',  sl: 'park',      filter: null,                              op: 0.6 },
+      { id: 'tc-wood',  sl: 'landcover', filter: ['==', ['get', 'class'], 'wood'],  color: '#1e3a2a' },
+      { id: 'tc-grass', sl: 'landcover', filter: ['==', ['get', 'class'], 'grass'], color: '#21351f' },
+      { id: 'tc-park',  sl: 'park',      filter: null,                              color: '#1c3326' },
     ];
     for (const g of greens) {
       if (map.getLayer(g.id)) continue;
       const layer = {
-        id: g.id, type: 'fill', source: vectorSrc, 'source-layer': g.sl, minzoom: 12,
-        paint: { 'fill-pattern': 'tree-pattern', 'fill-opacity': ['interpolate', ['linear'], ['zoom'], 12, 0, 14, g.op] },
+        id: g.id, type: 'fill', source: vectorSrc, 'source-layer': g.sl,
+        paint: { 'fill-color': g.color, 'fill-opacity': 1 },
       };
       if (g.filter) layer.filter = g.filter;
       map.addLayer(layer, before);
     }
-  } catch (e) { console.warn('Tree cover failed:', e?.message); }
+  } catch (e) { console.warn('Green fill failed:', e?.message); }
 }
 
 // Give the 3D buildings lit windows at night (warm/cool glowing grid).
