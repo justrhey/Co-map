@@ -390,6 +390,11 @@ STORAGES = {
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Cap non-file request bodies to blunt memory-exhaustion DoS via giant JSON /
+# form payloads. File uploads have their own per-type size limits in api.py.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 3 * 1024 * 1024      # 3 MB of non-file fields
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000               # cap field count (default 1000)
+
 # ── Production security ───────────────────────────────────────────
 # Applied only when DEBUG is off so local development stays on plain HTTP.
 if not DEBUG:

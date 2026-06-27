@@ -316,14 +316,27 @@ function buildComplaintEl(c) {
   const el = document.createElement('div');
   el.className = 'custom-marker marker-bubble';
   el.style.setProperty('--bubble-color', color);
-  const inside = c.photo
-    ? `<img class="bubble-img" src="${c.photo}" alt=""/>`
-    : `<svg class="bubble-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${CAT_SVG[c.category] || CAT_SVG.other}</svg>`;
-  el.innerHTML = `
-    <div class="bubble-body">
-      <div class="bubble-square">${inside}</div>
-    </div>
-    <div class="bubble-tail"></div>`;
+  // Build the inner structure with DOM APIs (not innerHTML string-interpolation)
+  // so a malicious photo URL or category value can't inject markup (stored XSS).
+  const body = document.createElement('div');
+  body.className = 'bubble-body';
+  const square = document.createElement('div');
+  square.className = 'bubble-square';
+  if (c.photo) {
+    const img = document.createElement('img');
+    img.className = 'bubble-img';
+    img.src = c.photo;          // setting .src treats the value as data, not HTML
+    img.alt = '';
+    square.appendChild(img);
+  } else {
+    // CAT_SVG is a trusted, hard-coded constant (not user input) — safe to inject.
+    square.innerHTML = `<svg class="bubble-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${CAT_SVG[c.category] || CAT_SVG.other}</svg>`;
+  }
+  body.appendChild(square);
+  const tail = document.createElement('div');
+  tail.className = 'bubble-tail';
+  el.appendChild(body);
+  el.appendChild(tail);
   return el;
 }
 
