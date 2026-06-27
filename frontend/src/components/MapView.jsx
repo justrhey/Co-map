@@ -120,13 +120,74 @@ const BASE_THEME = {
   night: { bg: '#1a1c2e', water: '#12203f', park: '#1a2733', wood: '#1c2935', land: '#1e2138' },
 };
 
-// We now use OpenFreeMap "liberty", which ships its own detailed palette
-// (green parks/woods, colored roads, water, POIs). We intentionally DON'T
-// recolor the base layers anymore — that dark override was for positron and
-// would erase all of liberty's detail. Kept as a no-op so existing callers
-// (applyMood / phase changes) stay valid.
-function applyBaseTheme(/* map, phase */) {
-  /* no-op: liberty provides its own detailed basemap colors */
+// "liberty" is a bright daytime style. We keep ALL its detail (parks, roads,
+// POIs, water) but re-tint it into a dark theme so it matches the app's premium
+// look. Instead of hardcoding liberty's ~90 layers, we walk every loaded layer
+// and recolor it by category keyword — robust to style changes.
+const DARK_TINT = {
+  bg:       '#10141c',  // land / background
+  water:    '#16314f',  // water bodies + waterways
+  park:     '#1c3326',  // parks
+  wood:     '#1e3a2a',  // forests / woodland
+  grass:    '#21351f',  // grass / pitches / cemetery
+  building: '#262b33',  // building fills (flat + the 3D base color elsewhere)
+  road:     '#2b313b',  // street fills
+  roadMajor:'#3a4150',  // motorway / primary fills (slightly lighter)
+  roadCasing:'#0d1117',  // road outlines (darker, so roads read as raised)
+  rail:     '#3a3f49',
+  boundary: 'rgba(255,255,255,0.12)',
+};
+
+// Pick the right dark color for a layer based on its id.
+function darkColorForLayer(id) {
+  const t = DARK_TINT;
+  if (id === 'background') return t.bg;
+  if (/water|waterway/.test(id)) return t.water;
+  if (/wood|forest/.test(id)) return t.wood;
+  if (/park/.test(id)) return t.park;
+  if (/grass|pitch|cemetery|track|sand|landcover/.test(id)) return t.grass;
+  if (/rail/.test(id)) return t.rail;
+  if (/casing/.test(id)) return t.roadCasing;
+  if (/motorway|trunk|primary/.test(id)) return t.roadMajor;
+  if (/road|street|bridge|tunnel|link|service|path|pedestrian|aeroway|highway/.test(id)) return t.road;
+  if (/landuse/.test(id)) return t.bg;
+  if (/building/.test(id)) return t.building;
+  if (/boundary/.test(id)) return t.boundary;
+  return null;
+}
+
+// Walk every fill/line/background layer and tint it dark. Skips symbols (labels)
+// and our own custom layers (complaints, barangays, 3d-buildings, heat, etc.).
+function applyDarkTint(map) {
+  const SKIP = /^(complaint|barangay|dark-zones|3d-buildings|building-outline|cool|hotspot|heat)/;
+  for (const layer of map.getStyle().layers || []) {
+    const id = layer.id;
+    if (SKIP.test(id)) continue;
+    const color = darkColorForLayer(id);
+    if (!color) continue;
+    try {
+      if (layer.type === 'background') map.setPaintProperty(id, 'background-color', color);
+      else if (layer.type === 'fill') map.setPaintProperty(id, 'fill-color', color);
+      else if (layer.type === 'line') map.setPaintProperty(id, 'line-color', color);
+      else if (layer.type === 'fill-extrusion') map.setPaintProperty(id, 'fill-extrusion-color', color);
+    } catch (e) { /* layer not paintable that way */ }
+  }
+  // Dim place labels so they read on the dark base.
+  for (const layer of map.getStyle().layers || []) {
+    if (layer.type !== 'symbol') continue;
+    if (SKIP.test(layer.id)) continue;
+    try {
+      map.setPaintProperty(layer.id, 'text-color', 'rgba(220,226,235,0.85)');
+      map.setPaintProperty(layer.id, 'text-halo-color', 'rgba(8,11,17,0.9)');
+      map.setPaintProperty(layer.id, 'text-halo-width', 1.2);
+    } catch (e) { /* not a text layer */ }
+  }
+}
+
+// Kept for compatibility with applyMood / phase changes. The dark tint is
+// applied once on load (liberty's own palette is otherwise bright daytime).
+function applyBaseTheme(map) {
+  if (map && map.getStyle) applyDarkTint(map);
 }
 // Fully opaque — buildings are solid, never see-through.
 const BUILDING_OPACITY = { day: 1, dusk: 1, night: 1 };
