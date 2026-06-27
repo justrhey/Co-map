@@ -240,12 +240,12 @@ AUTHENTICATION_BACKENDS = [
 ACCOUNT_LOGIN_METHODS = {'email'}
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
 # Master switch for the custom email-verification gate (RegisterView/LoginView).
-# Set REQUIRE_EMAIL_VERIFICATION=false to let users sign in immediately without
-# confirming their email — useful when SMTP isn't configured yet (e.g. early
-# beta). Flip back to true once a real email provider is wired up.
-REQUIRE_EMAIL_VERIFICATION = os.environ.get('REQUIRE_EMAIL_VERIFICATION', 'true').lower() in ('true', '1', 'yes')
+# Default OFF: users sign in immediately without confirming their email (no SMTP
+# needed). Set REQUIRE_EMAIL_VERIFICATION=true to re-enable once a real email
+# provider is wired up.
+REQUIRE_EMAIL_VERIFICATION = os.environ.get('REQUIRE_EMAIL_VERIFICATION', 'false').lower() in ('true', '1', 'yes')
 # 🚧 PRODUCTION: Set ACCOUNT_EMAIL_VERIFICATION to 'mandatory' to require
-ACCOUNT_EMAIL_VERIFICATION = 'mandatory' if REQUIRE_EMAIL_VERIFICATION else 'optional'
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory' if REQUIRE_EMAIL_VERIFICATION else 'none'
 ACCOUNT_SESSION_REMEMBER = True
 # 🔒 PRODUCTION: Set ACCOUNT_DEFAULT_HTTP_PROTOCOL=https so allauth
 #   generates HTTPS links for redirects and emails.
@@ -261,9 +261,13 @@ FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
 # skip its own intermediate confirmation pages.
 SOCIALACCOUNT_LOGIN_ON_GET = True
 # Bypass email verification for social logins — Google emails are already
-# verified by the provider. Email/password registration still uses mandatory
-# email verification via ACCOUNT_EMAIL_VERIFICATION above.
+# verified by the provider.
 SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
+# Auto-create the account straight from the Google profile. Without this (and
+# because ACCOUNT_SIGNUP_FIELDS marks password1/2 required, which OAuth users
+# don't have), allauth shows its intermediate /accounts/3rdparty/signup/ form
+# and bounces to the bare /accounts/login/ page instead of the SPA.
+SOCIALACCOUNT_AUTO_SIGNUP = True
 
 # 🔑 PRODUCTION — Google OAuth setup:
 #   1. Go to https://console.cloud.google.com/apis/credentials
