@@ -254,11 +254,13 @@ html, body {
 }
 
 .user-btn {
-  padding: 4px 10px;
-  border: none;
+  padding: 5px 11px;
+  /* Was color:var(--text-3) #484f58 on the dark header (~2:1, near-invisible).
+     Give it a readable label + a faint surface so it reads as a button. */
+  border: 1px solid rgba(255,255,255,0.1);
   border-radius: 6px;
-  background: transparent;
-  color: var(--text-3);
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
   font-size: 11px;
   font-weight: 600;
   font-family: 'Inter', sans-serif;
@@ -616,7 +618,7 @@ html, body {
   z-index: 999;
   width: 56px; height: 56px;
   border-radius: 50%; border: none;
-  background: var(--accent); color: #fff;
+  background: var(--accent); color: #0d1117;  /* dark icon on light accent (was #fff = invisible) */
   cursor: pointer;
   box-shadow: 0 4px 24px rgba(0,0,0,0.5);
   transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -1431,8 +1433,9 @@ textarea::placeholder { color: var(--text-3); }
   outline-offset: 2px;
 }
 
-.btn-ghost { background: rgba(255,255,255,0.06); color: var(--text-2); border: 1px solid rgba(255,255,255,0.08); }
-.btn-ghost:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+/* Brighter label: var(--text-2) #8b949e on this surface was ~3:1 (fails AA). */
+.btn-ghost { background: rgba(255,255,255,0.06); color: var(--text); border: 1px solid rgba(255,255,255,0.12); }
+.btn-ghost:hover { background: rgba(255,255,255,0.12); color: #fff; }
 .btn-ghost:active { background: rgba(255,255,255,0.14); }
 
 .btn-primary { background: var(--accent); color: #0d1117; font-weight: 700; }
@@ -3946,7 +3949,7 @@ textarea::placeholder { color: var(--text-3); }
 
 .admin-tab.active {
   background: var(--accent);
-  color: #fff;
+  color: #0d1117;  /* dark label on light accent (was #fff = invisible) */
   border-color: var(--accent);
 }
 
@@ -4054,13 +4057,17 @@ textarea::placeholder { color: var(--text-3); }
 }
 .admin-action:active { transform: scale(0.96); }
 
-.admin-action.approve { background: #c0c6d0; color: #0d1117; }
-.admin-action.reject { background: #484f58; color: #fff; }
-.admin-action.resolve { background: #8b949e; color: #fff; }
+/* Semantic, AA-contrast action colors (light-gray bg + white text was ~2.9:1). */
+.admin-action.approve { background: #22c55e; color: #0d1117; }   /* green = approve */
+.admin-action.reject  { background: #ef4444; color: #fff; }      /* red = reject */
+.admin-action.resolve { background: #3b82f6; color: #fff; }      /* blue = resolve */
 
 .admin-btn {
+  /* Was bg var(--accent) #e6edf3 + color #fff — white text on a near-white
+     background, effectively invisible. Use dark text on the light accent. */
   background: var(--accent) !important;
-  color: #fff !important;
+  color: #0d1117 !important;
+  font-weight: 700;
 }
 
 /* ── Analysis Panel ────────────────────────────────────────────── */
@@ -5086,7 +5093,7 @@ textarea::placeholder { color: var(--text-3); }
 .bw-chip-label {
   font-size: 11px;
   letter-spacing: 1px;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.72);
   text-transform: uppercase;
   font-weight: 600;
 }
