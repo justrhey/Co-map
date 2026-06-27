@@ -23,7 +23,6 @@ function useIsVisible(ref) {
   return visible;
 }
 
-const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
 const GLOBE_CENTER = [121.02, 14.60]; // Metro Manila
 const GLOBE_ZOOM = 9.4;               // zoomed onto Metro Manila only
 // Keep the view locked over Metro Manila — never drift away across the globe.
@@ -32,12 +31,37 @@ const MM_BOUNDS = [
   [121.20, 14.85], // NE
 ];
 
+// Decide day vs night from the *actual* Manila clock (UTC+8), so the hero shows
+// real daylight in the morning and a glowing night city after sunset.
+function getManilaScene() {
+  const nowUtcMs = Date.now() + new Date().getTimezoneOffset() * 60000;
+  const manilaHour = new Date(nowUtcMs + 8 * 3600000).getHours();
+  const isDay = manilaHour >= 6 && manilaHour < 18;       // 6am–6pm = daytime
+  const isGolden = manilaHour >= 5 && manilaHour < 7;      // dawn
+  const isDusk = manilaHour >= 17 && manilaHour < 19;      // sunset
+  if (isDay) {
+    return {
+      isDay: true,
+      style: 'https://tiles.openfreemap.org/styles/bright',
+      fog: { range: [0.6, 9], color: '#bcdcff', 'high-color': '#7fb4ff', 'space-color': '#cfe6ff', 'horizon-blend': 0.18 },
+      glowMax: isGolden || isDusk ? 0.55 : 0.28,  // daylight washes out light pollution
+    };
+  }
+  return {
+    isDay: false,
+    style: 'https://tiles.openfreemap.org/styles/dark',
+    fog: { range: [0.8, 8], color: '#0a1228', 'high-color': '#1e3a6e', 'space-color': '#05080f', 'horizon-blend': 0.1 },
+    glowMax: 0.92,  // strong light pollution at night
+  };
+}
+
 export default function LiveMapPreview({ onEnter }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const driftRef = useRef(null);
   const pauseRef = useRef(true);
   const [count, setCount] = useState(null);
+  const [isDay] = useState(() => getManilaScene().isDay);
   const visible = useIsVisible(containerRef);
 
   // Sync visibility to a ref so the rAF callback can read it synchronously.
@@ -45,9 +69,10 @@ export default function LiveMapPreview({ onEnter }) {
 
   // Create the map once (not on every visibility change).
   useEffect(() => {
+    const scene = getManilaScene();
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: STYLE_URL,
+      style: scene.style,        // bright basemap by day, dark by night
       center: GLOBE_CENTER,
       zoom: GLOBE_ZOOM,
       pitch: 45,
@@ -61,14 +86,10 @@ export default function LiveMapPreview({ onEnter }) {
     mapRef.current = map;
 
     map.on('load', async () => {
-      // Navy atmosphere/floor around the globe (not black).
-      map.setFog({
-        range: [0.8, 8],
-        color: '#101a33',
-        'high-color': '#1e3a6e',
-        'space-color': '#0a1228',
-        'horizon-blend': 0.12,
-      });
+      // Sky/atmosphere matches the time of day (blue daylight vs navy night).
+      // Guard: setFog isn't available on every style/build — a failure here must
+      // not abort the rest of load() (which adds the glow + pins).
+      try { map.setFog?.(scene.fog); } catch { /* fog unsupported — skip */ }
 
       // Gentle orbit around Metro Manila — the camera slowly rotates its bearing
       // while staying centered on the metro (pauses when hero is off-screen).
@@ -81,43 +102,56 @@ export default function LiveMapPreview({ onEnter }) {
       };
       driftRef.current = requestAnimationFrame(rotate);
 
-      // Clustered source of REAL complaints (shown as glowing pins).
+      // Source of REAL complaints (no clustering — the heatmap aggregates them
+      // into glow on the ground).
       map.addSource('preview-complaints', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
-        cluster: true,
-        clusterRadius: 50,
       });
+
+      // ── Light-pollution glow: a heatmap renders ON THE GROUND PLANE (it
+      // follows the map's pitch/tilt), not as a flat screen overlay. A warm
+      // transparent→amber→white ramp over the dark city reads like the orange
+      // sodium-light glow of a real metro seen from above. At night it's full
+      // strength; daylight washes it down (scene.glowMax).
       map.addLayer({
-        id: 'preview-clusters',
-        type: 'circle',
+        id: 'preview-glow',
+        type: 'heatmap',
         source: 'preview-complaints',
-        filter: ['has', 'point_count'],
+        maxzoom: 22,
         paint: {
-          'circle-color': 'rgba(255,90,95,0.9)',
-          'circle-stroke-color': 'rgba(255,255,255,0.4)',
-          'circle-stroke-width': 1.5,
-          'circle-radius': ['step', ['get', 'point_count'], 10, 10, 16, 50, 22],
+          'heatmap-weight': 1.4,
+          // High intensity so even a sparse scatter of reports builds visible
+          // bloom rather than staying below the ramp's first color stop.
+          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 6, 1.4, 10, 2.6, 14, 3.6],
+          'heatmap-color': [
+            'interpolate', ['linear'], ['heatmap-density'],
+            0,    'rgba(0,0,0,0)',
+            0.08, 'rgba(150,55,15,0.45)',
+            0.25, 'rgba(225,95,25,0.65)',
+            0.5,  'rgba(255,150,45,0.82)',
+            0.78, 'rgba(255,205,115,0.93)',
+            1,    'rgba(255,245,225,1)',
+          ],
+          // Large soft radius = diffuse light-pollution bloom, not sharp blobs.
+          'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 6, 26, 9, 55, 13, 90],
+          'heatmap-opacity': scene.glowMax,
         },
       });
-      map.addLayer({
-        id: 'preview-cluster-count',
-        type: 'symbol',
-        source: 'preview-complaints',
-        filter: ['has', 'point_count'],
-        layout: { 'text-field': '{point_count_abbreviated}', 'text-font': ['Noto Sans Regular'], 'text-size': 10 },
-        paint: { 'text-color': '#ffffff' },
-      });
+
+      // Crisp report pins sit on top of the glow so individual reports still read.
       map.addLayer({
         id: 'preview-points',
         type: 'circle',
         source: 'preview-complaints',
-        filter: ['!', ['has', 'point_count']],
+        minzoom: 8,
         paint: {
-          'circle-color': '#ff5a5f',
-          'circle-radius': 4,
-          'circle-stroke-color': 'rgba(255,255,255,0.6)',
+          'circle-color': scene.isDay ? '#e11d2e' : '#ff7a40',
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 2.5, 13, 5],
+          'circle-blur': scene.isDay ? 0 : 0.5,   // pins themselves glow softly at night
+          'circle-stroke-color': scene.isDay ? 'rgba(255,255,255,0.85)' : 'rgba(255,220,180,0.7)',
           'circle-stroke-width': 1,
+          'circle-opacity': 0.95,
         },
       });
 
@@ -149,6 +183,7 @@ export default function LiveMapPreview({ onEnter }) {
   return (
     <div
       className="map-preview-container live"
+      style={{ background: isDay ? '#bcdcff' : '#05080f' }}
       onClick={onEnter}
       role="button"
       tabIndex={0}
