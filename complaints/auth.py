@@ -280,8 +280,38 @@ class AccountView(generics.GenericAPIView):
         user = request.user
         # Drop the auth token first so the session is dead even if delete races.
         Token.objects.filter(user=user).delete()
-        user.delete()  # cascades to owned complaints, votes, comments
+        # GDPR Art. 17 (erasure): Complaint.user is SET_NULL, so reports survive
+        # as anonymous civic records — but their stored IP is personal data and
+        # must not linger detached. Scrub it before the user row is gone.
+        Complaint.objects.filter(user=user).update(ip_address=None)
+        user.delete()  # cascades to owned comments/votes; complaints are kept (SET_NULL)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ExportDataView(generics.GenericAPIView):
+    """GDPR Art. 15 / CCPA right-to-know: return everything stored about the user."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        u = request.user
+        return Response({
+            'account': {
+                'email': u.email,
+                'name': u.first_name,
+                'joined': u.date_joined,
+                'is_staff': u.is_staff,
+            },
+            'reports': list(
+                Complaint.objects.filter(user=u).values(
+                    'id', 'category', 'custom_category', 'description', 'impact',
+                    'action_requested', 'latitude', 'longitude', 'status',
+                    'ip_address', 'created_at',
+                )
+            ),
+            'comments': list(
+                u.comments.values('id', 'body', 'complaint_id', 'created_at')
+            ),
+        })
 
 
 class ChangePasswordView(generics.GenericAPIView):

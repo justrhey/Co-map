@@ -15,8 +15,10 @@ _INSECURE_SECRET = 'django-insecure-change-me-in-production!!'
 #   Generate one: python -c "import secrets; print(secrets.token_urlsafe(50))"
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', _INSECURE_SECRET)
 
-# 🔧 PRODUCTION: Set DJANGO_DEBUG=False when deploying live.
-DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
+# Safe-by-default: you must opt IN to debug. If DJANGO_DEBUG is ever unset in
+# production, Django serves its full traceback page (SQL, env, settings, paths) —
+# OWASP A05. Local dev sets DJANGO_DEBUG=True explicitly in .env.
+DEBUG = os.environ.get('DJANGO_DEBUG', 'False').lower() in ('true', '1', 'yes')
 
 # Refuse to run in production with the throwaway dev secret.
 if not DEBUG and SECRET_KEY == _INSECURE_SECRET:
@@ -185,6 +187,9 @@ REST_FRAMEWORK = {
         'auth': os.environ.get('THROTTLE_AUTH', '10/min'),          # brute-force protection
         'resend': os.environ.get('THROTTLE_RESEND', '3/hour'),      # email-bomb protection
     },
+    # Log full exception detail server-side but return a sanitized message to
+    # the client, so a 500 never leaks a traceback / DB internals (OWASP A09).
+    'EXCEPTION_HANDLER': 'config.exception_handler.safe_exception_handler',
     # Number of trusted reverse proxies in front of the app. Default 0 means
     # the client IP is taken from REMOTE_ADDR and a spoofed X-Forwarded-For
     # header is ignored for throttling. Set to the real proxy depth (e.g. 1
@@ -407,6 +412,25 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # form payloads. File uploads have their own per-type size limits in api.py.
 DATA_UPLOAD_MAX_MEMORY_SIZE = 3 * 1024 * 1024      # 3 MB of non-file fields
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000               # cap field count (default 1000)
+
+# ── Logging ───────────────────────────────────────────────────────
+# Errors are recorded server-side (console → captured by Vercel/your platform
+# and Sentry) but never surfaced to the client. 'audit' records privileged
+# moderation actions for an accountability trail.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'standard': {'format': '%(asctime)s %(levelname)s %(name)s %(message)s'},
+    },
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler', 'formatter': 'standard'},
+    },
+    'loggers': {
+        'django.request': {'handlers': ['console'], 'level': 'ERROR', 'propagate': False},
+        'audit': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+    },
+}
 
 # ── Production security ───────────────────────────────────────────
 # Applied only when DEBUG is off so local development stays on plain HTTP.

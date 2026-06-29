@@ -17,6 +17,9 @@ from .api import (
     CommentSerializer,
 )
 import math
+import logging
+
+audit = logging.getLogger('audit')
 
 
 def get_client_ip(request):
@@ -558,6 +561,11 @@ class ComplaintViewSet(viewsets.ModelViewSet):
             complaint.resolution_photo = serializer.validated_data['resolution_photo']
 
         complaint.save()
+        # Accountability trail for privileged moderation (OWASP A09).
+        audit.info(
+            'status_change complaint=%s by_user=%s %s->%s',
+            complaint.id, request.user.id, old_status, new_status,
+        )
         detail_serializer = ComplaintDetailSerializer(complaint)
         return Response(detail_serializer.data)
 

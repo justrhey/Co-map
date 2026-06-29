@@ -7,6 +7,7 @@ export default function LoginSheet({ open, onLogin, onClose }) {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [agreed, setAgreed] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -65,6 +66,15 @@ export default function LoginSheet({ open, onLogin, onClose }) {
                   onChange={(e) => setName(e.target.value)} maxLength={50} />
               </div>
             )}
+            {mode === 'register' && (
+              <label className="consent-row" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, margin: '4px 0' }}>
+                <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+                <span>
+                  I agree to the <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> and
+                  consent to my report location being shown publicly.
+                </span>
+              </label>
+            )}
             {error && (
               <div className="form-error" role="alert">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -82,7 +92,7 @@ export default function LoginSheet({ open, onLogin, onClose }) {
               <button type="button" className="btn btn-ghost" onClick={onClose}>
                 Cancel
               </button>
-              <button type="submit" className="btn btn-primary" disabled={loading || !email || !password}>
+              <button type="submit" className="btn btn-primary" disabled={loading || !email || !password || (mode === 'register' && !agreed)}>
                 {loading ? <><span className="spinner" /> ...</> : mode === 'login' ? 'Sign In' : 'Create Account'}
               </button>
             </div>

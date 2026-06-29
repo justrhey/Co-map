@@ -29,6 +29,19 @@ ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime']
 ALLOWED_AUDIO_TYPES = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4', 'audio/x-m4a']
 
 
+def assert_real_image(file):
+    """Confirm the bytes actually decode as an image, not just that the browser
+    *claimed* image/* in Content-Type (which is trivially spoofable). Blocks a
+    polyglot/disguised file from being stored and later served as an image."""
+    from PIL import Image, UnidentifiedImageError
+    try:
+        Image.open(file).verify()
+    except (UnidentifiedImageError, OSError, ValueError):
+        raise serializers.ValidationError('File is not a valid image.')
+    finally:
+        file.seek(0)  # verify() consumes the stream; rewind for the real save
+
+
 def validate_media_file(file):
     """Validate a single media file based on its type."""
     if file.size == 0:
@@ -39,6 +52,7 @@ def validate_media_file(file):
     if ct in ALLOWED_IMAGE_TYPES:
         if file.size > MAX_PHOTO_SIZE:
             raise serializers.ValidationError(f'Image too large ({file.size // 1024} KB). Max {MAX_PHOTO_SIZE // 1024 // 1024} MB.')
+        assert_real_image(file)
         return 'image'
     elif ct in ALLOWED_VIDEO_TYPES:
         if file.size > MAX_VIDEO_SIZE:
@@ -220,6 +234,7 @@ class ComplaintCreateSerializer(serializers.ModelSerializer):
         allowed_types = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
         if file.content_type not in allowed_types:
             raise serializers.ValidationError(f'Unsupported file type "{file.content_type}". Use JPEG, PNG, or WebP.')
+        assert_real_image(file)
         return file
 
     def validate_additional_media(self, files):
